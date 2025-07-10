@@ -1,3 +1,8 @@
+/* Global box-sizing for all elements */
+* {
+  box-sizing: border-box;
+}
+
 body {
   font-family: 'IBM Plex Sans Mono', monospace;
   background-color: #fcfcfc;
@@ -38,6 +43,7 @@ input[type="url"] {
   border-radius: 0;
   background: #fff;
   font-family: inherit;
+  box-sizing: border-box; /* Ensure padding is included in width */
 }
 
 button,
@@ -437,20 +443,250 @@ body.dark .btn:disabled:hover {
 }
 
 @media (max-width: 600px) {
+  body {
+    padding: 10px;
+  }
+  
+  .container {
+    padding: 15px;
+    border-width: 1px;
+  }
+  
+  /* Adjust title for mobile */
+  .retro-title {
+    font-size: 18px;
+    margin-bottom: 15px;
+  }
+  
+  /* Tagline adjustments */
+  .tagline {
+    font-size: 11px;
+    line-height: 1.4;
+    margin-bottom: 15px;
+  }
+  
+  /* Form styling */
   form {
     flex-direction: column;
+    gap: 8px;
+    width: 100%; /* Ensure form doesn't exceed container */
   }
-  input[type="url"],
-  button {
+  
+  input[type="url"] {
+    width: 100%;
+    max-width: 100%; /* Prevent extending beyond container */
+    font-size: 14px;
+    padding: 6px 10px; /* Reduced padding for mobile */
+    height: auto;
+    box-sizing: border-box;
+  }
+  
+  /* All buttons should have consistent mobile sizing */
+  button,
+  .btn {
+    padding: 6px 10px;
+    font-size: 13px;
+    min-height: 36px; /* Touch-friendly minimum height */
+  }
+  
+  /* Form submit button - specific overrides */
+  button[type="submit"] {
+    width: 100%;
+    font-size: 14px;
+    padding: 8px 12px;
+    min-height: 40px; /* Slightly larger for primary action */
+  }
+  
+  /* Small utility buttons */
+  .btn-clear {
+    font-size: 10px;
+    padding: 3px 6px;
+    min-height: auto;
+  }
+  
+  /* Action buttons in table */
+  .btn-copy,
+  .btn-download {
+    padding: 4px 6px;
+    font-size: 10px;
+    min-height: auto;
+  }
+  
+  /* Button spacing on mobile */
+  .btn + .btn {
+    margin-left: 3px;
+  }
+  
+  /* History section */
+  #history-container h3 {
+    font-size: 14px;
+  }
+  
+  #history {
+    gap: 4px;
+  }
+  
+  #history a {
+    font-size: 11px;
+    padding: 3px 5px;
+  }
+  
+  /* Summary bar responsive layout */
+  .summary-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  
+  .summary-search {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  
+  .search-controls {
+    width: 100%;
+    display: flex;
+    gap: 4px;
+  }
+  
+  #search-input {
+    flex: 1;
+    width: auto !important;
+    font-size: 12px !important;
+    padding: 4px 6px !important; /* Smaller padding for mobile */
+    height: auto;
+  }
+  
+  #inline-toggle-label {
+    margin-left: 0 !important;
+    justify-content: center;
+  }
+  
+  /* Table improvements - prevent smushing */
+  .table-wrapper {
+    margin: 0 -15px;
+    width: calc(100% + 30px);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    position: relative;
+  }
+  
+  /* Add scroll indicator shadow */
+  .table-wrapper::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 30px;
+    background: linear-gradient(to right, transparent, rgba(255,255,255,0.8));
+    pointer-events: none;
+  }
+  
+  body.dark .table-wrapper::after {
+    background: linear-gradient(to right, transparent, rgba(0,0,0,0.8));
+  }
+
+  table {
+    font-size: 11px;
+    min-width: 600px; /* Increased to prevent smushing */
     width: 100%;
   }
-  table {
-    font-size: 12px;
+  
+  th, td {
+    padding: 5px 3px;
+    font-size: 11px;
+    white-space: nowrap; /* Prevent text wrapping in cells */
   }
-  img {
+  
+  /* File name column can wrap */
+  td:nth-child(2) {
+    white-space: normal;
+    word-break: break-word;
+    max-width: 120px;
+  }
+  
+  /* Smaller preview images on mobile */
+  .preview-container {
+    width: 50px;
+    height: 50px;
+  }
+  
+  .zoom-icon {
+    width: 16px;
+    height: 16px;
+    font-size: 10px;
+  }
+  
+  /* Theme toggle positioning */
+  .toggle-btn {
+    top: 5px;
+    right: 5px;
+    padding: 6px 10px;
+    font-size: 14px;
+  }
+  
+  /* Message box */
+  .message {
+    font-size: 11px;
+    padding: 8px;
+  }
+  
+  /* Footer */
+  .footer {
+    margin-top: 20px;
+    font-size: 10px;
+  }
+  
+  /* Hide tooltips on mobile (touch devices don't have hover) */
+  .btn[data-tooltip]:hover::after,
+  .zoom-icon[data-tooltip]:hover::after,
+  .preview-container[data-tooltip]:hover::after,
+  .click-layer[data-tooltip]:hover::after {
+    display: none;
+  }
+}
+
+/* Tablet/medium screens */
+@media (min-width: 601px) and (max-width: 900px) {
+  .container {
+    padding: 20px;
+  }
+  
+  .retro-title {
+    font-size: 20px;
+  }
+  
+  .preview-container {
     width: 60px;
+    height: 60px;
   }
-} 
+  
+  .summary-bar {
+    flex-wrap: wrap;
+  }
+}
+
+/* Small landscape phones */
+@media (max-width: 600px) and (orientation: landscape) {
+  body {
+    padding: 5px;
+  }
+  
+  .container {
+    padding: 10px;
+  }
+  
+  .retro-title {
+    font-size: 16px;
+    margin-bottom: 10px;
+  }
+  
+  .tagline {
+    margin-bottom: 10px;
+  }
+}
 
 .summary-search {
   display:flex;
