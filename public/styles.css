@@ -11,7 +11,7 @@ body {
 }
 
 .container {
-  max-width: 1200px;
+  max-width: 1400px; /* Increased from 1200px */
   margin: auto;
   background: #fff;
   padding: 20px;
@@ -118,6 +118,16 @@ th[data-sort]:hover {
   background-color: #d0d0d0;
 }
 
+/* Alt text column styling */
+td:nth-child(3) {
+  max-width: 200px;
+  word-wrap: break-word;
+  white-space: normal;
+  text-align: left;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
 /* Adjust preview border */
 .preview-container {
   border: 1px dotted #000;
@@ -156,6 +166,7 @@ th[data-sort]:hover {
   border: 1px solid #000;
   background: #fff;
   color: #000;
+  cursor: pointer;
 }
 
 .click-layer {
@@ -590,7 +601,7 @@ body.dark .btn:disabled:hover {
 
   table {
     font-size: 11px;
-    min-width: 600px; /* Increased to prevent smushing */
+    min-width: 700px; /* Increased from 600px to accommodate alt text column */
     width: 100%;
   }
   
@@ -605,6 +616,13 @@ body.dark .btn:disabled:hover {
     white-space: normal;
     word-break: break-word;
     max-width: 120px;
+  }
+  
+  /* Alt text column can also wrap on mobile */
+  td:nth-child(3) {
+    white-space: normal;
+    word-break: break-word;
+    max-width: 100px;
   }
   
   /* Smaller preview images on mobile */

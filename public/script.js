@@ -296,6 +296,7 @@ function buildTable(data) {
         zoomIcon.className = 'zoom-icon';
         zoomIcon.textContent = '🔍';
         zoomIcon.setAttribute('data-tooltip', 'Open image in new tab');
+        zoomIcon.addEventListener('click', handleOpen);
         container.appendChild(zoomIcon);
       }
 
@@ -305,6 +306,10 @@ function buildTable(data) {
       // File name
       const fname = item.inline ? '-' : (item.filename && item.filename !== '-' ? item.filename : (item.url ? (item.url.split('/').pop().split(/[?#]/)[0] || 'image') : '-'));
       tr.appendChild(createTextTd(fname));
+
+      // Alt text
+      const altText = item.alt || '-';
+      tr.appendChild(createTextTd(altText));
 
       // Width, Height, Size, Type
       tr.appendChild(createTextTd(item.width));

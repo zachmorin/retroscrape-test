@@ -90,8 +90,11 @@ app.post('/api/scrape', async (req, res) => {
     const $ = cheerio.load(response.data);
 
     const imgSrcs = new Set();
+    const imgData = new Map(); // Store additional data like alt text
+    
     $('img').each((_, elem) => {
       let src = $(elem).attr('src');
+      const altText = $(elem).attr('alt') || '-';
 
       if (!src && scrapeLazy) {
         const candidates = [
@@ -117,6 +120,8 @@ app.post('/api/scrape', async (req, res) => {
         if (!full) return;
         if (full.startsWith('data:') || full.startsWith('javascript:')) return;
         imgSrcs.add(full);
+        // Store alt text for this URL
+        imgData.set(full, { alt: altText });
       }
     });
 
@@ -149,11 +154,13 @@ app.post('/api/scrape', async (req, res) => {
         height: $(elem).attr('height') || '-',
         type: 'svg',
         size: Buffer.byteLength(svgHtml, 'utf8'),
-        filename: '-'
+        filename: '-',
+        alt: '-' // SVGs don't have alt text
       });
     });
 
     for (const imgUrl of imgSrcs) {
+      const imgInfo = imgData.get(imgUrl) || {};
       const meta = {
         url: imgUrl,
         width: '-',
@@ -161,7 +168,8 @@ app.post('/api/scrape', async (req, res) => {
         type: '-',
         size: '-',
         filename: getFileName(imgUrl),
-        inline: false
+        inline: false,
+        alt: imgInfo.alt || '-' // Use stored alt text or default to '-'
       };
       try {
         // quick HEAD check for size
