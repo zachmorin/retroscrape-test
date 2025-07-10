@@ -392,6 +392,7 @@ body.dark input[type="url"]::placeholder {
 
 .search-input {
   border-radius:0;
+  color: #000;
 }
 
 body.dark .search-input {
@@ -408,6 +409,33 @@ body.dark .search-input {
 }
 
 body.dark .tagline {color:#e6e6e6;}
+
+/* Disabled button state */
+button:disabled,
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f0f0f0;
+  color: #999;
+}
+
+button:disabled:hover,
+.btn:disabled:hover {
+  background: #f0f0f0;
+  color: #999;
+}
+
+body.dark button:disabled,
+body.dark .btn:disabled {
+  background: #222;
+  color: #666;
+}
+
+body.dark button:disabled:hover,
+body.dark .btn:disabled:hover {
+  background: #222;
+  color: #666;
+}
 
 @media (max-width: 600px) {
   form {
