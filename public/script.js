@@ -241,6 +241,7 @@ async function handleScrape(url, includeLazy = true) {
 
 function buildTable(data) {
   tbody.innerHTML = '';
+  sortState = {}; // Reset sort state for new table
   data.forEach((item, idx) => {
       const tr = document.createElement('tr');
 
@@ -343,7 +344,8 @@ function buildTable(data) {
       tr.dataset.inline = item.inline ? 'true' : 'false';
       tbody.appendChild(tr);
   });
-  makeSortable();
+  // Re-initialize sortable headers after building new table
+  initSortable();
 }
 
 // init history list on load
@@ -401,30 +403,67 @@ function createTextTd(text) {
 }
 
 // Sorting functionality
-function makeSortable() {
+let sortState = {}; // Track sort state for each column
+
+function initSortable() {
   const headers = table.querySelectorAll('th[data-sort]');
-  headers.forEach(header => {
+  headers.forEach((header, headerIndex) => {
     header.style.cursor = 'pointer';
-    header.addEventListener('click', () => {
-      const index = Array.from(header.parentNode.children).indexOf(header);
-      const ascending = header.dataset.order !== 'asc';
-      header.dataset.order = ascending ? 'asc' : 'desc';
-
-      const rows = Array.from(tbody.querySelectorAll('tr'));
-      rows.sort((a, b) => {
-        const aText = a.children[index].textContent;
-        const bText = b.children[index].textContent;
-
-        const aNum = parseFloat(aText);
-        const bNum = parseFloat(bText);
-        if (!isNaN(aNum) && !isNaN(bNum)) {
-          return ascending ? aNum - bNum : bNum - aNum;
-        }
-        return ascending ? aText.localeCompare(bText) : bText.localeCompare(aText);
+    
+    // Remove any existing click listeners
+    const newHeader = header.cloneNode(true);
+    header.parentNode.replaceChild(newHeader, header);
+    
+    newHeader.addEventListener('click', () => {
+      const index = Array.from(newHeader.parentNode.children).indexOf(newHeader);
+      
+      // Toggle sort order
+      if (!sortState[index] || sortState[index] === 'desc') {
+        sortState[index] = 'asc';
+      } else {
+        sortState[index] = 'desc';
+      }
+      
+      // Update visual indicator (optional)
+      document.querySelectorAll('th[data-sort]').forEach(h => {
+        h.textContent = h.textContent.replace(' ↑', '').replace(' ↓', '');
       });
-
-      tbody.innerHTML = '';
-      rows.forEach(r => tbody.appendChild(r));
+      newHeader.textContent = newHeader.textContent + (sortState[index] === 'asc' ? ' ↑' : ' ↓');
+      
+      sortTable(index, sortState[index] === 'asc');
     });
   });
-} 
+}
+
+function sortTable(columnIndex, ascending) {
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  
+  rows.sort((a, b) => {
+    const aText = a.children[columnIndex].textContent;
+    const bText = b.children[columnIndex].textContent;
+    
+    const aNum = parseFloat(aText);
+    const bNum = parseFloat(bText);
+    
+    let result;
+    if (!isNaN(aNum) && !isNaN(bNum)) {
+      result = aNum - bNum;
+    } else {
+      result = aText.localeCompare(bText);
+    }
+    
+    return ascending ? result : -result;
+  });
+  
+  // Re-append rows in sorted order
+  tbody.innerHTML = '';
+  rows.forEach(row => tbody.appendChild(row));
+  
+  // Update visibility after sorting
+  updateRowVisibility();
+}
+
+// Initialize sortable headers once on page load
+document.addEventListener('DOMContentLoaded', () => {
+  initSortable();
+}); 
