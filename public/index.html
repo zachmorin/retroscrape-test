@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RetroScrape</title>
+  <meta name="description" content="RetroScrape is a retro-styled web tool that scrapes images—inline, background, and embedded SVGs—from any URL and presents them for easy preview, sorting, copying, and downloading." />
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="container">
+    <button id="theme-toggle" class="btn toggle-btn" title="Toggle dark mode">🌙</button>
+    <h1 class="retro-title">RETROSCRAPE</h1>
+    <p class="tagline">Quickly scrape standard, lazy-loaded, background, and embedded SVG images from any webpage.</p>
+    <form id="scrape-form">
+      <input type="url" id="website-url" placeholder="https://example.com" required />
+      <button type="submit">Scrape</button>
+    </form>
+
+    <div id="history-container">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <h3 style="margin:0;">History</h3>
+        <button id="clear-history" class="btn btn-clear">clear</button>
+      </div>
+      <ul id="history"></ul>
+    </div>
+
+    <div id="loading" class="loading" style="display: none;">Loading...</div>
+    <div id="message" class="message" style="display:none;"></div>
+    <div id="summary-bar" class="summary-bar" style="display:none;">
+      <div class="summary-search">
+        <span id="summary" class="summary"></span>
+        <div class="search-controls">
+          <input type="text" id="search-input" placeholder="search…" class="search-input" style="display:none; font-size:12px; padding:4px 6px; border:1px dotted #000; background:#fff; width:180px;">
+          <button id="clear-search" class="btn btn-clear" style="display:none;">clear</button>
+        </div>
+      </div>
+      <label id="inline-toggle-label" class="inline-toggle-label" style="font-size:12px; display:none; align-items:center; gap:4px; margin-left:8px;">
+        <input type="checkbox" id="toggle-inline" style="margin:0;"> show embedded svgs
+      </label>
+    </div>
+
+    <div class="table-wrapper">
+      <table id="results-table" style="display: none;">
+      <thead>
+        <tr>
+          <th>Preview</th>
+          <th data-sort="filename">File Name</th>
+          <th data-sort="width">Width</th>
+          <th data-sort="height">Height</th>
+          <th data-sort="size">Size (KB)</th>
+          <th data-sort="type">Format</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer class="footer">© 2025 RetroScrape.</footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.2/dist/purify.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html> 
