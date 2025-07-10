@@ -168,11 +168,11 @@ function removeHistory(targetUrl){
 
 if(clearHistoryBtn){
   clearHistoryBtn.addEventListener('click', ()=>{
-    localStorage.removeItem('scraperHistory');
-    document.cookie='scraperHistory=;path=/;max-age=0';
-    historyList.innerHTML='';
+  localStorage.removeItem('scraperHistory');
+  document.cookie='scraperHistory=;path=/;max-age=0';
+  historyList.innerHTML='';
     updateClearHistoryBtn();
-  });
+});
 }
 
 // helper to handle response
@@ -295,6 +295,7 @@ function buildTable(data) {
         const zoomIcon = document.createElement('span');
         zoomIcon.className = 'zoom-icon';
         zoomIcon.textContent = '🔍';
+        zoomIcon.setAttribute('data-tooltip', 'Open image in new tab');
         container.appendChild(zoomIcon);
       }
 
@@ -319,6 +320,12 @@ function buildTable(data) {
       const copyBtn = document.createElement('button');
       copyBtn.className = 'btn btn-copy';
       copyBtn.textContent = 'Copy';
+      // Tooltip based on image type
+      if (item.inline) {
+        copyBtn.setAttribute('data-tooltip', 'Copy SVG code');
+      } else {
+        copyBtn.setAttribute('data-tooltip', 'Copy image url');
+      }
       if (item.inline) {
         copyBtn.addEventListener('click', () => navigator.clipboard.writeText(item.content));
       } else {
@@ -332,6 +339,7 @@ function buildTable(data) {
         const downloadBtn = document.createElement('button');
         downloadBtn.className = 'btn btn-download';
         downloadBtn.textContent = 'Download';
+        downloadBtn.setAttribute('data-tooltip', 'Download image');
         downloadBtn.addEventListener('click', () => {
           window.open(`/api/download?imgUrl=${encodeURIComponent(item.url)}`, '_blank');
         });
@@ -433,7 +441,7 @@ function initSortable() {
       sortTable(index, sortState[index] === 'asc');
     });
   });
-}
+} 
 
 function sortTable(columnIndex, ascending) {
   const rows = Array.from(tbody.querySelectorAll('tr'));
