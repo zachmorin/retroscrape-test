@@ -22,6 +22,7 @@ The app will be available at `http://localhost:3000`.
 ---
 
 ### Notes
-- The scraper only fetches images referenced via `<img>` tags.
+- The scraper fetches standard images (`<img>` tags), lazy-loaded images, background images, and embedded SVG images.
+- Does not scrape images from CSS files or dynamically JavaScript-loaded content.
 - Some images may fail to load metadata due to CORS or network restrictions; these are skipped.
 - File size is reported in kilobytes (KB). 
