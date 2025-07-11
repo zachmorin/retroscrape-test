@@ -409,12 +409,25 @@ body.dark input[type="url"]::placeholder {
 .search-input {
   border-radius:0;
   color: #000;
+  border: 1px solid #000;
+  background: #fff;
 }
 
 body.dark .search-input {
-  background:#000;
+  background:#111;
   color:#e6e6e6;
-  border-color:#e6e6e6;
+  border: 1px solid #e6e6e6;
+}
+
+/* Override inline styles for search input */
+#search-input {
+  border: 1px solid #000 !important;
+}
+
+body.dark #search-input {
+  background: #111 !important;
+  border: 1px solid #e6e6e6 !important;
+  color: #e6e6e6 !important;
 }
 
 .tagline {
@@ -567,6 +580,11 @@ body.dark .btn:disabled:hover {
     font-size: 12px !important;
     padding: 4px 6px !important; /* Smaller padding for mobile */
     height: auto;
+  }
+  
+  body.dark #search-input {
+    background: #111 !important;
+    border: 1px solid #e6e6e6 !important;
   }
   
   #inline-toggle-label {
@@ -756,4 +774,346 @@ body.dark .click-layer[data-tooltip]:hover::after {
 /* Add spacing for zoom-icon tooltip */
 .zoom-icon[data-tooltip]:hover::after {
   margin-bottom: 3px;
+} 
+
+/* SEO Metadata Drawer Styles */
+.seo-drawer {
+  margin: 20px 0;
+  border: 1px dotted #000;
+  background: #f8f9fa;
+  overflow: hidden;
+  /* Performance optimization */
+  transform: translateZ(0);
+}
+
+.drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  background: #e8e8e8;
+  border-bottom: 1px dotted #000;
+  cursor: pointer;
+}
+
+.drawer-title {
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.drawer-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-copy-drawer {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: #fff;
+  border: 1px solid #000;
+  cursor: pointer;
+}
+
+.btn-copy-drawer:hover {
+  background: #000;
+  color: #fff;
+}
+
+.drawer-toggle {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 5px;
+  transition: transform 0.3s ease;
+}
+
+.drawer-toggle:hover {
+  background: none;
+}
+
+.drawer-content {
+  height: 200px;
+  padding: 0;
+  /* Removed transition to prevent choppiness */
+  background: #fff;
+  position: relative;
+  resize: vertical;
+  min-height: 50px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* Performance optimizations */
+  will-change: height, transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  transform-origin: top;
+}
+
+/* Disable transition during resize for smoother performance */
+.drawer-content:active {
+  /* No transition needed */
+}
+
+.drawer-content.collapsed {
+  height: 0 !important;
+  min-height: 0;
+  padding: 0;
+  resize: none;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+.drawer-toggle.collapsed {
+  transform: rotate(-90deg);
+}
+
+.drawer-scroll-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding: 10px;
+  padding-bottom: 20px;
+  position: relative;
+  /* Force horizontal scrollbar to always show when needed */
+  overflow-x: scroll;
+  /* Performance optimizations */
+  will-change: scroll-position;
+  transform: translateZ(0);
+  -webkit-overflow-scrolling: touch;
+  /* Prevent layout thrashing */
+  contain: layout;
+  /* Smooth scrolling */
+  scroll-behavior: smooth;
+}
+
+/* Ensure horizontal scrollbar is always visible */
+.drawer-scroll-container::-webkit-scrollbar:horizontal {
+  display: block !important;
+}
+
+/* Custom scrollbar styling for drawer */
+.drawer-scroll-container::-webkit-scrollbar {
+  height: 12px;
+  width: 12px;
+}
+
+.drawer-scroll-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border: 1px solid #ccc;
+}
+
+.drawer-scroll-container::-webkit-scrollbar-thumb {
+  background: #888;
+  border: 1px solid #666;
+  border-radius: 2px;
+}
+
+.drawer-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+body.dark .drawer-scroll-container::-webkit-scrollbar-track {
+  background: #222;
+  border-color: #444;
+}
+
+body.dark .drawer-scroll-container::-webkit-scrollbar-thumb {
+  background: #666;
+  border-color: #888;
+}
+
+body.dark .drawer-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: #888;
+}
+
+#head-content {
+  margin: 0;
+  font-family: 'IBM Plex Sans Mono', monospace;
+  font-size: 12px;
+  white-space: pre;
+  word-wrap: normal;
+  background: transparent;
+  overflow: visible;
+  counter-reset: line;
+  line-height: 1.4;
+  display: inline-block;
+  min-width: max-content;
+  /* Performance optimization - removed to prevent issues */
+}
+
+/* Line numbers */
+.code-line {
+  display: inline-block;
+  position: relative;
+  padding-left: 40px;
+  line-height: 1.4;
+  width: 100%;
+  min-height: 1.4em;
+  /* Performance optimization - use paint containment only */
+  contain: paint;
+}
+
+.code-line::before {
+  content: counter(line);
+  counter-increment: line;
+  position: absolute;
+  left: 0;
+  width: 30px;
+  text-align: right;
+  color: #666;
+  font-size: 11px;
+  user-select: none;
+  line-height: 1.4;
+}
+
+/* Resize handle styling */
+.drawer-content::after {
+  content: '⋮⋮';
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  cursor: ns-resize;
+  z-index: 10;
+  font-size: 10px;
+  color: #888;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(90deg);
+  user-select: none;
+  pointer-events: auto;
+}
+
+/* Larger invisible resize area for easier grabbing */
+.drawer-content::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 10px;
+  cursor: ns-resize;
+  z-index: 9;
+}
+
+/* Override browser's default resize handle */
+.drawer-content::-webkit-resizer {
+  background: transparent;
+}
+
+body.dark .drawer-content::after {
+  color: #666;
+}
+
+/* Syntax highlighting - Retro themed */
+.tag-bracket { color: #000; font-weight: bold; }
+.tag-name { color: #00f; font-weight: bold; }
+.attribute { color: #008000; }
+.attribute-value { color: #800080; }
+.comment { color: #666; font-style: italic; }
+.doctype { color: #800; font-weight: bold; }
+
+/* Dark mode styles for SEO drawer */
+body.dark .seo-drawer {
+  background: #111;
+  border: 1px dotted #e6e6e6;
+}
+
+body.dark .drawer-header {
+  background: #222;
+  border-bottom-color: #e6e6e6;
+  color: #e6e6e6;
+}
+
+body.dark .drawer-controls {
+  color: #e6e6e6;
+}
+
+body.dark .btn-copy-drawer {
+  background: #000;
+  color: #e6e6e6;
+  border: 1px solid #e6e6e6;
+}
+
+body.dark .btn-copy-drawer:hover {
+  background: #e6e6e6;
+  color: #000;
+}
+
+body.dark .drawer-toggle {
+  color: #e6e6e6;
+}
+
+body.dark .drawer-content {
+  background: #000;
+}
+
+body.dark #head-content {
+  color: #e6e6e6;
+}
+
+body.dark .code-line::before {
+  color: #888;
+}
+
+/* Dark mode syntax highlighting */
+body.dark .tag-bracket { color: #e6e6e6; }
+body.dark .tag-name { color: #0f0; }
+body.dark .attribute { color: #f0f; }
+body.dark .attribute-value { color: #ff0; }
+body.dark .comment { color: #999; }
+body.dark .doctype { color: #f55; }
+
+/* Mobile styles for SEO drawer */
+@media (max-width: 600px) {
+  .seo-drawer {
+    margin: 15px 0;
+    border: 1px dotted #000;
+  }
+  
+  body.dark .seo-drawer {
+    border: 1px dotted #e6e6e6;
+  }
+  
+  .drawer-header {
+    padding: 8px;
+  }
+  
+  .drawer-title {
+    font-size: 12px;
+  }
+  
+  .drawer-content {
+    height: 150px;
+    max-height: 50vh;
+    resize: none; /* Disable resize on mobile */
+  }
+  
+  .drawer-scroll-container {
+    padding: 8px;
+    padding-bottom: 8px;
+  }
+  
+  .drawer-content::after {
+    display: none; /* Hide resize handle on mobile */
+  }
+  
+  .btn-copy-drawer {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+  
+  .code-line {
+    padding-left: 35px;
+  }
+  
+  .code-line::before {
+    width: 25px;
+    font-size: 10px;
+  }
 } 

@@ -1,2 +1,26 @@
+# Node modules
 node_modules/
+
+# Backup files
+*.zip
 retroscrape_backup_*.zip
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo

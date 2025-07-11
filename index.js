@@ -89,6 +89,9 @@ app.post('/api/scrape', async (req, res) => {
     const response = await axios.get(url, { timeout: 8000, maxContentLength: 5 * 1024 * 1024 });
     const $ = cheerio.load(response.data);
 
+    // Extract head content
+    const headContent = $('head').html() || '';
+
     const imgSrcs = new Set();
     const imgData = new Map(); // Store additional data like alt text
     
@@ -192,7 +195,11 @@ app.post('/api/scrape', async (req, res) => {
       results.push(meta);
     }
 
-    return res.json(results);
+    // Return both images and head content
+    return res.json({
+      images: results,
+      headContent: headContent
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Failed to scrape the provided URL.' });

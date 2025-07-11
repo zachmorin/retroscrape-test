@@ -11,7 +11,15 @@ const inlineLabel = document.getElementById('inline-toggle-label');
 const searchInput = document.getElementById('search-input');
 const clearSearchBtn = document.getElementById('clear-search');
 const clearHistoryBtn = document.getElementById('clear-history');
+const seoDrawer = document.getElementById('seo-drawer');
+const drawerToggle = document.getElementById('drawer-toggle');
+const drawerContent = document.getElementById('drawer-content');
+const headContentPre = document.getElementById('head-content');
+const copyDrawerBtn = document.getElementById('copy-drawer');
 let loadingInterval;
+
+// Feature toggle - set to false to disable SEO metadata feature
+const SEO_FEATURE_ENABLED = seoDrawer ? seoDrawer.dataset.featureEnabled === 'true' : false;
 
 function updateDisplayedCount(){
   let visible=0;
@@ -181,6 +189,7 @@ async function handleScrape(url, includeLazy = true) {
   table.style.display = 'none';
   if (summaryBar) summaryBar.style.display = 'none';
   if (inlineLabel) inlineLabel.style.display = 'none';
+  if (seoDrawer && SEO_FEATURE_ENABLED) seoDrawer.style.display = 'none';
   clearMessage();
   loading.textContent = 'Loading';
   loading.style.display = 'block';
@@ -210,14 +219,18 @@ async function handleScrape(url, includeLazy = true) {
       return;
     }
 
-    if (!data.length) {
+    // Handle new response format
+    const images = data.images || data; // Support both old and new format
+    const headContent = data.headContent || '';
+
+    if (!images.length) {
       showMessage('No images found.\n\nPossible reasons: 1) Images load dynamically via JavaScript or lazy-loading. 2) Images are set as CSS backgrounds. 3) The site requires authentication/cookies. 4) The site blocks scraping tools or uses CORS restrictions.', true);
       saveHistory(url, 0, true);
       return;
     }
 
-    buildTable(data);
-    if (summaryText) summaryText.textContent = `Total Images: ${data.length}`;
+    buildTable(images);
+    if (summaryText) summaryText.textContent = `Total Images: ${images.length}`;
     if (summaryBar) summaryBar.style.display = 'flex';
     if (inlineLabel) inlineLabel.style.display = 'inline-flex';
     if (inlineToggle) {
@@ -228,8 +241,28 @@ async function handleScrape(url, includeLazy = true) {
       searchInput.style.display='inline-block';
     }
     if(clearSearchBtn){ clearSearchBtn.style.display='inline-block';}
+    
+    // Display SEO metadata if feature is enabled
+    if (SEO_FEATURE_ENABLED && seoDrawer && headContent) {
+      seoDrawer.style.display = 'block';
+      // Ensure drawer has default height when first displayed
+      if (!drawerContent.style.height || drawerContent.style.height === '0px') {
+        // Use requestAnimationFrame for smooth initial display
+        drawerContent.style.height = '0px';
+        drawerContent.style.visibility = 'visible';
+        requestAnimationFrame(() => {
+          drawerContent.style.transition = 'height 0.25s cubic-bezier(0.4, 0, 0.2, 1)';
+          drawerContent.style.height = '200px';
+          setTimeout(() => {
+            drawerContent.style.transition = '';
+          }, 250);
+        });
+      }
+      headContentPre.innerHTML = formatAndHighlightHTML(headContent);
+    }
+    
     updateRowVisibility();
-    saveHistory(url, data.length, false);
+    saveHistory(url, images.length, false);
     table.style.display = 'table';
   } catch (err) {
     loading.style.display = 'none';
@@ -479,4 +512,171 @@ function sortTable(columnIndex, ascending) {
 // Initialize sortable headers once on page load
 document.addEventListener('DOMContentLoaded', () => {
   initSortable();
-}); 
+  
+  // Initialize drawer toggle functionality
+  if (drawerToggle && drawerContent) {
+    // Store the original height
+    const defaultHeight = '200px';
+    let isAnimating = false;
+    
+    // Smooth toggle function
+    const toggleDrawer = (open) => {
+      if (isAnimating) return;
+      isAnimating = true;
+      
+      if (open) {
+        // Opening
+        drawerContent.classList.remove('collapsed');
+        drawerToggle.classList.remove('collapsed');
+        drawerToggle.textContent = '▼';
+        drawerContent.style.visibility = 'visible';
+        
+        // Force reflow for smooth animation
+        void drawerContent.offsetHeight;
+        
+        // Animate open
+        drawerContent.style.transition = 'height 0.25s cubic-bezier(0.4, 0, 0.2, 1)';
+        drawerContent.style.height = defaultHeight;
+        
+        setTimeout(() => {
+          drawerContent.style.transition = '';
+          isAnimating = false;
+        }, 250);
+      } else {
+        // Closing
+        drawerContent.style.transition = 'height 0.25s cubic-bezier(0.4, 0, 0.2, 1)';
+        drawerContent.style.height = '0px';
+        
+        setTimeout(() => {
+          drawerContent.classList.add('collapsed');
+          drawerToggle.classList.add('collapsed');
+          drawerToggle.textContent = '▶';
+          drawerContent.style.visibility = 'hidden';
+          drawerContent.style.transition = '';
+          isAnimating = false;
+        }, 250);
+      }
+    };
+    
+    // Add resize observer for smooth resize tracking
+    if (window.ResizeObserver) {
+      const resizeObserver = new ResizeObserver((entries) => {
+        // Use requestAnimationFrame for smooth updates
+        requestAnimationFrame(() => {
+          // Smooth resize handling without forced reflows
+        });
+      });
+      resizeObserver.observe(drawerContent);
+    }
+    
+    drawerToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isCollapsed = drawerContent.classList.contains('collapsed');
+      toggleDrawer(isCollapsed);
+    });
+    
+    // Allow clicking on header to toggle (but not on buttons)
+    const drawerHeader = document.querySelector('.drawer-header');
+    if (drawerHeader) {
+      drawerHeader.addEventListener('click', (e) => {
+        // Only toggle if not clicking on buttons
+        if (!e.target.closest('button')) {
+          const isCollapsed = drawerContent.classList.contains('collapsed');
+          toggleDrawer(isCollapsed);
+        }
+      });
+    }
+  }
+  
+  // Initialize copy button
+  if (copyDrawerBtn) {
+    copyDrawerBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const content = headContentPre.textContent || '';
+      navigator.clipboard.writeText(content).then(() => {
+        const originalText = copyDrawerBtn.textContent;
+        copyDrawerBtn.textContent = 'Copied!';
+        setTimeout(() => {
+          copyDrawerBtn.textContent = originalText;
+        }, 1500);
+      });
+    });
+  }
+});
+
+// Helper function to format head content for better readability
+function formatHeadContent(html) {
+  // Basic formatting - you can enhance this further
+  return html
+    .replace(/></g, '>\n<')
+    .replace(/(\s+)([a-zA-Z-]+)=/g, '\n$1$2=')
+    .trim();
+}
+
+// Enhanced function to format and add syntax highlighting
+function formatAndHighlightHTML(html) {
+  // First format the HTML for readability
+  const formatted = html
+    .replace(/></g, '>\n<')
+    .replace(/\s*\/>/g, ' />')
+    .trim();
+  
+  // Split into lines
+  const lines = formatted.split('\n');
+  
+  // For performance, limit syntax highlighting to first 500 lines
+  const maxLinesToHighlight = 500;
+  const shouldTruncate = lines.length > maxLinesToHighlight;
+  const linesToProcess = shouldTruncate ? lines.slice(0, maxLinesToHighlight) : lines;
+  
+  // Process each line with syntax highlighting
+  const highlightedLines = linesToProcess.map(line => {
+    let highlighted = line;
+    
+    // Escape HTML entities for display
+    highlighted = highlighted
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    
+    // Skip highlighting for very long lines (performance)
+    if (highlighted.length > 1000) {
+      return `<span class="code-line">${highlighted}</span>`;
+    }
+    
+    // Highlight comments
+    highlighted = highlighted.replace(
+      /(&lt;!--.*?--&gt;)/g,
+      '<span class="comment">$1</span>'
+    );
+    
+    // Highlight doctype
+    highlighted = highlighted.replace(
+      /(&lt;!DOCTYPE.*?&gt;)/gi,
+      '<span class="doctype">$1</span>'
+    );
+    
+    // Highlight tags with attributes
+    highlighted = highlighted.replace(
+      /(&lt;)(\/?)(\w+)(.*?)(\/?&gt;)/g,
+      (match, lt, slash, tagName, attrs, gt) => {
+        // Process attributes
+        const highlightedAttrs = attrs.replace(
+          /(\s+)([\w-]+)(=)(["'])(.*?)\4/g,
+          '$1<span class="attribute">$2</span>$3<span class="attribute-value">$4$5$4</span>'
+        );
+        
+        return `<span class="tag-bracket">${lt}</span>${slash}<span class="tag-name">${tagName}</span>${highlightedAttrs}<span class="tag-bracket">${gt}</span>`;
+      }
+    );
+    
+    return `<span class="code-line">${highlighted}</span>`;
+  });
+  
+  // Add truncation notice if needed
+  if (shouldTruncate) {
+    highlightedLines.push(`<span class="code-line comment">... (${lines.length - maxLinesToHighlight} more lines)</span>`);
+  }
+  
+  return highlightedLines.join('\n');
+} 

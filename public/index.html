@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
   <title>RetroScrape</title>
   <meta name="description" content="RetroScrape is a retro-styled web tool that scrapes images—inline, background, and embedded SVGs—from any URL and presents them for easy preview, sorting, copying, and downloading." />
   <link rel="stylesheet" href="styles.css">
@@ -33,11 +34,28 @@
 
     <div id="loading" class="loading" style="display: none;">Loading...</div>
     <div id="message" class="message" style="display:none;"></div>
+    
+    <!-- SEO Metadata Drawer -->
+    <div id="seo-drawer" class="seo-drawer" style="display:none;" data-feature-enabled="true">
+      <div class="drawer-header">
+        <span class="drawer-title">Header Content</span>
+        <div class="drawer-controls">
+          <button class="btn btn-copy-drawer" id="copy-drawer">Copy</button>
+          <button class="drawer-toggle" id="drawer-toggle">▼</button>
+        </div>
+      </div>
+      <div class="drawer-content" id="drawer-content">
+        <div class="drawer-scroll-container">
+          <pre id="head-content"></pre>
+        </div>
+      </div>
+    </div>
+    
     <div id="summary-bar" class="summary-bar" style="display:none;">
       <div class="summary-search">
         <span id="summary" class="summary"></span>
         <div class="search-controls">
-          <input type="text" id="search-input" placeholder="search…" class="search-input" style="display:none; font-size:12px; padding:4px 6px; border:1px dotted #000; background:#fff; width:180px;">
+          <input type="text" id="search-input" placeholder="search…" class="search-input" style="display:none; font-size:12px; padding:4px 6px; border:1px solid #000; background:#fff; width:180px;">
           <button id="clear-search" class="btn btn-clear" style="display:none;">clear</button>
         </div>
       </div>
