@@ -128,6 +128,11 @@ td:nth-child(3) {
   padding-right: 10px;
 }
 
+/* Center the dash when there's no alt text */
+td.no-alt {
+  text-align: center;
+}
+
 /* Adjust preview border */
 .preview-container {
   border: 1px dotted #000;

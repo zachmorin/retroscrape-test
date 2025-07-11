@@ -342,7 +342,11 @@ function buildTable(data) {
 
       // Alt text
       const altText = item.alt || '-';
-      tr.appendChild(createTextTd(altText));
+      const altTd = createTextTd(altText);
+      if (altText === '-') {
+        altTd.classList.add('no-alt');
+      }
+      tr.appendChild(altTd);
 
       // Width, Height, Size, Type
       tr.appendChild(createTextTd(item.width));
