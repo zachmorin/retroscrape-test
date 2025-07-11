@@ -5,8 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "./build.sh",
-    "start": "node index.js",
-    "postinstall": "npx playwright install chromium"
+    "start": "node index.js"
   },
   "keywords": [
     "image",
