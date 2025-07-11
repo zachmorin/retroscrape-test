@@ -90,7 +90,11 @@ function getFileName(fileUrl) {
 async function scrapeWithPlaywright(url) {
   let browser;
   try {
-    // Launch browser with stealth settings
+    // Log memory usage for Render.com debugging
+    const memUsage = process.memoryUsage();
+    debugLog(`Memory before browser launch: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`);
+    
+    // Launch browser with stealth settings optimized for Render.com
     browser = await chromium.launch({
       headless: true,
       args: [
@@ -98,9 +102,21 @@ async function scrapeWithPlaywright(url) {
         '--disable-dev-shm-usage',
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--run-all-compositor-stages-before-draw',
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-ipc-flooding-protection',
+        '--single-process', // Critical for Render.com's memory limits
+        '--memory-pressure-off',
+        '--max_old_space_size=460' // Reserve some memory for Node.js
       ]
     });
+    
+    debugLog(`Browser launched successfully for: ${url}`);
 
     const page = await browser.newPage();
 
@@ -363,6 +379,24 @@ async function scrapeWithPlaywright(url) {
     if (browser) {
       await browser.close();
     }
+    
+    // Enhanced error logging for Render.com debugging
+    debugLog(`Playwright error for ${url}:`, error.message);
+    debugLog(`Error stack:`, error.stack);
+    
+    // Log memory usage on error
+    const memUsage = process.memoryUsage();
+    debugLog(`Memory on error: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`);
+    
+    // Provide more specific error messages
+    if (error.message.includes('Protocol error') || error.message.includes('Target closed')) {
+      throw new Error(`Browser crashed (likely memory limit exceeded). Consider using static scraping mode.`);
+    } else if (error.message.includes('Navigation timeout')) {
+      throw new Error(`Page load timeout. The website may be slow or blocking automated access.`);
+    } else if (error.message.includes('Launch failed')) {
+      throw new Error(`Browser launch failed. This may be due to missing system dependencies in the hosting environment.`);
+    }
+    
     throw error;
   }
 }
@@ -741,4 +775,20 @@ app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Debug mode: ${DEBUG ? 'enabled' : 'disabled'}`);
+  
+  // Log deployment diagnostics for Render.com
+  if (process.env.NODE_ENV === 'production') {
+    const memUsage = process.memoryUsage();
+    console.log(`Production startup - Memory: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`);
+    console.log(`Node.js version: ${process.version}`);
+    console.log(`Platform: ${process.platform}`);
+    
+    // Test if Playwright is properly installed
+    try {
+      const { chromium } = require('playwright');
+      console.log('Playwright chromium module loaded successfully');
+    } catch (err) {
+      console.error('Playwright chromium module failed to load:', err.message);
+    }
+  }
 }); 
