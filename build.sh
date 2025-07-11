@@ -7,6 +7,6 @@ npm install
 
 # Install Playwright browsers
 echo "Installing Playwright browsers..."
-npx playwright install chromium --with-deps
+npx playwright install chromium
 
 echo "Build complete!" 

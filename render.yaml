@@ -2,7 +2,7 @@ services:
   - type: web
     name: image-scraper
     runtime: node
-    buildCommand: npm install && npx playwright install chromium --with-deps
+    buildCommand: npm install && npx playwright install chromium
     startCommand: npm start
     envVars:
       - key: NODE_ENV
