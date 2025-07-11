@@ -4,7 +4,7 @@
   "description": "Web app to scrape images from a webpage and display metadata.",
   "main": "index.js",
   "scripts": {
-    "build": "echo 'Installing Playwright browsers...' && npx playwright install chromium --with-deps",
+    "build": "./build.sh",
     "start": "node index.js",
     "postinstall": "npx playwright install chromium"
   },
