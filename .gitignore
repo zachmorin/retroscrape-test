@@ -1,3 +1,6 @@
+# Test environment - ignore chats folder
+chats/
+
 # Node modules
 node_modules/
 

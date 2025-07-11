@@ -4,10 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="favicon.ico" type="image/x-icon">
-  <title>RetroScrape</title>
-  <meta name="description" content="RetroScrape is a retro-styled web tool that scrapes images—inline, background, and embedded SVGs—from any URL and presents them for easy preview, sorting, copying, and downloading." />
+  <title>RETROSCRAPE</title>
+  <meta name="description" content="RETROSCRAPE is a powerful tool that scrapes images from any webpage. View image data, copy image links, download images, and copy inline SVG code with eases" />
   <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -17,8 +16,8 @@
   <div class="container">
     <button id="theme-toggle" class="btn toggle-btn" title="Toggle dark mode">🌙</button>
     <h1 class="retro-title">RETROSCRAPE</h1>
-    <p class="tagline">Quickly scrape standard, lazy-loaded, background, and embedded SVG images from any webpage.<br>
-    Note: Does not scrape images from CSS files or dynamically JS-loaded content.</p>
+    <p class="tagline">Quickly scrape for images from any webpage.<br>
+    Note: Does not scrape images from CSS files.</p>
     <form id="scrape-form">
       <input type="url" id="website-url" placeholder="https://example.com" required />
       <button type="submit">Scrape</button>
@@ -34,6 +33,32 @@
 
     <div id="loading" class="loading" style="display: none;">Loading...</div>
     <div id="message" class="message" style="display:none;"></div>
+    
+    <!-- Debug Mode (hidden when debug disabled) -->
+    <div id="debug-panel" class="debug-panel" style="display:none;" data-feature-enabled="false">
+      <div class="debug-header">
+        <h3>Debug Information</h3>
+        <button id="debug-toggle" class="btn btn-toggle">Hide</button>
+      </div>
+      <div class="debug-content">
+        <div class="debug-row">
+          <span class="debug-label">Static Scraping:</span>
+          <span id="static-status" class="debug-status">-</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Dynamic Scraping:</span>
+          <span id="dynamic-status" class="debug-status">-</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Method Used:</span>
+          <span id="method-used" class="debug-method">-</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Fallback Used:</span>
+          <span id="fallback-used" class="debug-fallback">-</span>
+        </div>
+      </div>
+    </div>
     
     <!-- SEO Metadata Drawer -->
     <div id="seo-drawer" class="seo-drawer" style="display:none;" data-feature-enabled="true">

@@ -8,9 +8,20 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const ipaddr = require('ipaddr.js');
 const dnsPromises = require('dns').promises;
+const { chromium } = require('playwright');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Debug mode flag - disabled in production
+const DEBUG = process.env.NODE_ENV !== 'production';
+
+// Debug logging helper
+function debugLog(...args) {
+  if (DEBUG) {
+    console.log(`[${new Date().toISOString()}]`, ...args);
+  }
+}
 
 app.use(cors());
 // Security headers
@@ -74,9 +85,488 @@ function getFileName(fileUrl) {
     return 'image';
   }
 }
-// Scrape endpoint
+
+// Dynamic scraping function using Playwright
+async function scrapeWithPlaywright(url) {
+  let browser;
+  try {
+    // Launch browser with stealth settings
+    browser = await chromium.launch({
+      headless: true,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--disable-dev-shm-usage',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-gpu'
+      ]
+    });
+
+    const page = await browser.newPage();
+
+    // Remove automation indicators
+    await page.addInitScript(() => {
+      delete navigator.webdriver;
+    });
+
+    // Block unnecessary resources to speed up scraping
+    await page.route('**/*', route => {
+      const resourceType = route.request().resourceType();
+      // Only block fonts and stylesheets for now, keep media for image loading
+      if (['font', 'stylesheet'].includes(resourceType)) {
+        route.abort();
+      } else {
+        route.continue();
+      }
+    });
+
+    // Navigate to the page
+    await page.goto(url, { 
+      waitUntil: 'networkidle',
+      timeout: 30000 
+    });
+
+    // Wait for potential WordPress blocks or dynamic content
+    try {
+      await page.waitForSelector('img, [style*="background-image"], .wp-block-image', { 
+        timeout: 5000 
+      });
+    } catch (e) {
+      // Continue if no images found immediately
+    }
+
+    // Scroll to trigger lazy loading
+    await page.evaluate(async () => {
+      let previousHeight = 0;
+      let scrollAttempts = 0;
+      const maxScrolls = 5;
+      
+      while (scrollAttempts < maxScrolls) {
+        const currentHeight = document.body.scrollHeight;
+        if (currentHeight === previousHeight) break;
+        
+        window.scrollTo(0, currentHeight);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        previousHeight = currentHeight;
+        scrollAttempts++;
+      }
+      
+      // Scroll back to top
+      window.scrollTo(0, 0);
+    });
+
+    // Wait for lazy images to load
+    await page.waitForTimeout(2000);
+
+    // Extract head content
+    const headContent = await page.$eval('head', head => head.innerHTML).catch(() => '');
+
+    // Extract all images and background images
+    const imageData = await page.evaluate(() => {
+      const images = [];
+      const processedUrls = new Set();
+
+      // Extract regular img tags
+      const imgElements = Array.from(document.querySelectorAll('img'));
+      imgElements.forEach(img => {
+        let src = img.src;
+        
+        // Handle lazy loading attributes
+        if (!src || src.includes('data:') || src.includes('placeholder')) {
+          const lazyAttrs = ['data-src', 'data-original', 'data-url', 'data-lazy', 'data-lazy-src'];
+          for (const attr of lazyAttrs) {
+            const lazySrc = img.getAttribute(attr);
+            if (lazySrc && !lazySrc.includes('data:')) {
+              src = lazySrc;
+              break;
+            }
+          }
+        }
+
+        if (src && !src.startsWith('data:') && !src.startsWith('javascript:') && !processedUrls.has(src)) {
+          processedUrls.add(src);
+          images.push({
+            url: src,
+            alt: img.alt || '-',
+            width: img.naturalWidth || '-',
+            height: img.naturalHeight || '-',
+            className: img.className || ''
+          });
+        }
+      });
+
+      // Extract background images from computed styles
+      const elementsWithBg = Array.from(document.querySelectorAll('*'));
+      elementsWithBg.forEach(el => {
+        const style = window.getComputedStyle(el);
+        const bgImage = style.backgroundImage;
+        
+        if (bgImage && bgImage !== 'none' && bgImage.includes('url(')) {
+          const urlMatch = bgImage.match(/url\(["']?([^"')]+)["']?\)/);
+          if (urlMatch && urlMatch[1]) {
+            const bgUrl = urlMatch[1];
+            if (!bgUrl.startsWith('data:') && !bgUrl.startsWith('javascript:') && !processedUrls.has(bgUrl)) {
+              processedUrls.add(bgUrl);
+              images.push({
+                url: bgUrl,
+                alt: 'Background Image',
+                width: '-',
+                height: '-',
+                className: el.className || ''
+              });
+            }
+          }
+        }
+      });
+
+      // Extract inline SVGs
+      const svgElements = Array.from(document.querySelectorAll('svg'));
+      svgElements.forEach(svg => {
+        const svgHtml = svg.outerHTML;
+        images.push({
+          url: null,
+          inline: true,
+          content: svgHtml,
+          width: svg.getAttribute('width') || '-',
+          height: svg.getAttribute('height') || '-',
+          type: 'svg',
+          size: new Blob([svgHtml]).size,
+          filename: '-',
+          alt: '-'
+        });
+      });
+
+      // Extract object tags with image data
+      const objectElements = Array.from(document.querySelectorAll('object[data]'));
+      objectElements.forEach(obj => {
+        const data = obj.getAttribute('data');
+        const type = obj.getAttribute('type') || '';
+        
+        // Filter for image-related object types
+        const isImageObject = type.startsWith('image/') || 
+                             data.match(/\.(jpg|jpeg|png|gif|bmp|webp|svg|ico|tiff?)(\?|#|$)/i);
+        
+        if (data && isImageObject && !data.startsWith('data:') && !data.startsWith('javascript:') && !processedUrls.has(data)) {
+          processedUrls.add(data);
+          images.push({
+            url: data,
+            alt: obj.getAttribute('alt') || obj.textContent?.trim() || 'Object Image',
+            width: obj.getAttribute('width') || '-',
+            height: obj.getAttribute('height') || '-',
+            className: obj.className || '',
+            source: 'object'
+          });
+        }
+      });
+
+      // Extract favicon and app icons from head
+      const faviconSelectors = [
+        'link[rel="icon"]',
+        'link[rel="shortcut icon"]', 
+        'link[rel="apple-touch-icon"]',
+        'link[rel="apple-touch-icon-precomposed"]',
+        'link[rel="mask-icon"]',
+        'meta[property="og:image"]',
+        'meta[name="twitter:image"]',
+        'meta[name="msapplication-TileImage"]'
+      ];
+
+      faviconSelectors.forEach(selector => {
+        const elements = Array.from(document.querySelectorAll(selector));
+        elements.forEach(elem => {
+          let iconUrl = null;
+          let altText = 'Favicon/App Icon';
+          
+          if (elem.tagName.toLowerCase() === 'link') {
+            iconUrl = elem.getAttribute('href');
+            const rel = elem.getAttribute('rel') || '';
+            if (rel.includes('apple')) {
+              altText = 'Apple Touch Icon';
+            } else if (rel.includes('mask')) {
+              altText = 'Safari Mask Icon';
+            } else {
+              altText = 'Favicon';
+            }
+          } else if (elem.tagName.toLowerCase() === 'meta') {
+            iconUrl = elem.getAttribute('content');
+            const name = elem.getAttribute('name') || elem.getAttribute('property') || '';
+            if (name.includes('og:image')) {
+              altText = 'Open Graph Image';
+            } else if (name.includes('twitter')) {
+              altText = 'Twitter Card Image';
+            } else if (name.includes('msapplication')) {
+              altText = 'Windows Tile Image';
+            }
+          }
+
+          if (iconUrl && !iconUrl.startsWith('data:') && !iconUrl.startsWith('javascript:') && !processedUrls.has(iconUrl)) {
+            processedUrls.add(iconUrl);
+            images.push({
+              url: iconUrl,
+              alt: altText,
+              width: elem.getAttribute('sizes') ? elem.getAttribute('sizes').split('x')[0] || '-' : '-',
+              height: elem.getAttribute('sizes') ? elem.getAttribute('sizes').split('x')[1] || '-' : '-',
+              className: '',
+              source: 'favicon'
+            });
+          }
+        });
+      });
+
+      return images;
+    });
+
+    await browser.close();
+
+    // Process the extracted image data
+    const results = [];
+    
+    for (const img of imageData) {
+      if (img.inline) {
+        // Handle inline SVG
+        results.push(img);
+      } else {
+        // Handle regular images
+        const meta = {
+          url: img.url,
+          width: img.width !== '-' ? img.width : '-',
+          height: img.height !== '-' ? img.height : '-',
+          type: '-',
+          size: '-',
+          filename: getFileName(img.url),
+          inline: false,
+          alt: img.alt
+        };
+
+        // Try to get additional metadata using probe
+        try {
+          const info = await probe(img.url);
+          meta.width = info.width;
+          meta.height = info.height;
+          meta.type = info.type;
+          meta.size = info.length;
+        } catch (e) {
+          // If probe fails, try to extract type from URL
+          const ext = img.url.split('.').pop().split(/#|\?/)[0];
+          if (ext && ext.length <= 5) {
+            meta.type = ext;
+          }
+        }
+
+        results.push(meta);
+      }
+    }
+
+    return { images: results, headContent };
+
+  } catch (error) {
+    if (browser) {
+      await browser.close();
+    }
+    throw error;
+  }
+}
+
+// Static scraping function (extracted from original endpoint)
+async function scrapeStatic(url, scrapeLazy = true) {
+  const response = await axios.get(url, { timeout: 8000, maxContentLength: 5 * 1024 * 1024 });
+  const $ = cheerio.load(response.data);
+
+  // Extract head content
+  const headContent = $('head').html() || '';
+
+  const imgSrcs = new Set();
+  const imgData = new Map(); // Store additional data like alt text
+  
+  $('img').each((_, elem) => {
+    let src = $(elem).attr('src');
+    const altText = $(elem).attr('alt') || '-';
+
+    if (!src && scrapeLazy) {
+      const candidates = [
+        'data-src',
+        'data-original',
+        'data-url',
+        'data-lazy',
+        'data-srcset',
+        'data-lazy-src'
+      ];
+      for (const attr of candidates) {
+        const val = $(elem).attr(attr);
+        if (val) { src = val; break; }
+      }
+      // handle srcset like formats
+      if (src && src.includes(',')) {
+        src = src.split(',')[0].trim().split(' ')[0];
+      }
+    }
+
+    if (src) {
+      const full = resolveUrl(url, src);
+      if (!full) return;
+      if (full.startsWith('data:') || full.startsWith('javascript:')) return;
+      imgSrcs.add(full);
+      // Store alt text for this URL
+      imgData.set(full, { alt: altText });
+    }
+  });
+
+  const results = [];
+
+  // Extract background images from inline style attributes
+  $('[style*="url("]').each((_, elem) => {
+    const style = $(elem).attr('style');
+    if (!style) return;
+    const urlRegex = /url\((['\"]?)(.*?)\1\)/gi;
+    let match;
+    while ((match = urlRegex.exec(style)) !== null) {
+      const raw = match[2];
+      if (!raw) continue;
+      const full = resolveUrl(url, raw);
+      if (!full) continue;
+      if (full.startsWith('data:') || full.startsWith('javascript:')) continue;
+      imgSrcs.add(full);
+    }
+  });
+
+  // Extract inline SVG elements embedded directly in HTML
+  $('svg').each((i, elem) => {
+    const svgHtml = $.html(elem);
+    results.push({
+      url: null,
+      inline: true,
+      content: svgHtml,
+      width: $(elem).attr('width') || '-',
+      height: $(elem).attr('height') || '-',
+      type: 'svg',
+      size: Buffer.byteLength(svgHtml, 'utf8'),
+      filename: '-',
+      alt: '-' // SVGs don't have alt text
+    });
+  });
+
+  // Extract object tags with image data
+  $('object[data]').each((_, elem) => {
+    const data = $(elem).attr('data');
+    const type = $(elem).attr('type') || '';
+    
+    // Filter for image-related object types
+    const isImageObject = type.startsWith('image/') || 
+                         data?.match(/\.(jpg|jpeg|png|gif|bmp|webp|svg|ico|tiff?)(\?|#|$)/i);
+    
+    if (data && isImageObject) {
+      const full = resolveUrl(url, data);
+      if (!full) return;
+      if (full.startsWith('data:') || full.startsWith('javascript:')) return;
+      imgSrcs.add(full);
+      // Store alt text or fallback text for this URL
+      const altText = $(elem).attr('alt') || $(elem).text()?.trim() || 'Object Image';
+      imgData.set(full, { alt: altText, source: 'object' });
+    }
+  });
+
+  // Extract favicon and app icons from head
+  const faviconSelectors = [
+    'link[rel="icon"]',
+    'link[rel="shortcut icon"]', 
+    'link[rel="apple-touch-icon"]',
+    'link[rel="apple-touch-icon-precomposed"]',
+    'link[rel="mask-icon"]',
+    'meta[property="og:image"]',
+    'meta[name="twitter:image"]',
+    'meta[name="msapplication-TileImage"]'
+  ];
+
+  faviconSelectors.forEach(selector => {
+    $(selector).each((_, elem) => {
+      let iconUrl = null;
+      let altText = 'Favicon/App Icon';
+      
+      if (elem.tagName.toLowerCase() === 'link') {
+        iconUrl = $(elem).attr('href');
+        const rel = $(elem).attr('rel') || '';
+        if (rel.includes('apple')) {
+          altText = 'Apple Touch Icon';
+        } else if (rel.includes('mask')) {
+          altText = 'Safari Mask Icon';
+        } else {
+          altText = 'Favicon';
+        }
+      } else if (elem.tagName.toLowerCase() === 'meta') {
+        iconUrl = $(elem).attr('content');
+        const name = $(elem).attr('name') || $(elem).attr('property') || '';
+        if (name.includes('og:image')) {
+          altText = 'Open Graph Image';
+        } else if (name.includes('twitter')) {
+          altText = 'Twitter Card Image';
+        } else if (name.includes('msapplication')) {
+          altText = 'Windows Tile Image';
+        }
+      }
+
+      if (iconUrl) {
+        const full = resolveUrl(url, iconUrl);
+        if (!full) return;
+        if (full.startsWith('data:') || full.startsWith('javascript:')) return;
+        imgSrcs.add(full);
+        
+        // Extract dimensions from sizes attribute if available
+        const sizes = $(elem).attr('sizes') || '';
+        const sizeParts = sizes.split('x');
+        const width = sizeParts[0] || '-';
+        const height = sizeParts[1] || '-';
+        
+        imgData.set(full, { 
+          alt: altText, 
+          source: 'favicon',
+          width: width,
+          height: height
+        });
+      }
+    });
+  });
+
+  for (const imgUrl of imgSrcs) {
+    const imgInfo = imgData.get(imgUrl) || {};
+    const meta = {
+      url: imgUrl,
+      width: imgInfo.width || '-',
+      height: imgInfo.height || '-',
+      type: '-',
+      size: '-',
+      filename: getFileName(imgUrl),
+      inline: false,
+      alt: imgInfo.alt || '-', // Use stored alt text or default to '-'
+      source: imgInfo.source || 'img' // Track source: 'img', 'object', etc.
+    };
+    try {
+      // quick HEAD check for size
+      try {
+        const head = await axios.head(imgUrl, { timeout: 8000 });
+        const len = parseInt(head.headers['content-length'] || '0', 10);
+        if (len && len > 5 * 1024 * 1024) throw new Error('too big');
+      } catch {}
+
+      const info = await probe(imgUrl);
+      meta.width = info.width;
+      meta.height = info.height;
+      meta.type = info.type;
+      meta.size = info.length; // bytes
+    } catch (_) {
+      // If probe fails (e.g., SVG or remote restriction), still include the image
+      const ext = imgUrl.split('.').pop().split(/#|\?/)[0];
+      if (ext.length <= 5) meta.type = ext;
+    }
+    results.push(meta);
+  }
+
+  return { images: results, headContent };
+}
+
+// Enhanced scrape endpoint with hybrid static/dynamic approach
 app.post('/api/scrape', async (req, res) => {
-  const { url, lazy: scrapeLazy = true } = req.body;
+  const { url, lazy: scrapeLazy = true, dynamic = 'auto' } = req.body;
+  
   if (!url) {
     return res.status(400).json({ error: 'No url provided' });
   }
@@ -85,124 +575,133 @@ app.post('/api/scrape', async (req, res) => {
     return res.status(400).json({ error: 'URL not allowed' });
   }
 
+  let scrapingMethod = 'static';
+  let fallbackUsed = false;
+
   try {
-    const response = await axios.get(url, { timeout: 8000, maxContentLength: 5 * 1024 * 1024 });
-    const $ = cheerio.load(response.data);
+    let result = { images: [], headContent: '' };
+    let staticAttempted = false;
+    let dynamicAttempted = false;
+    let staticSuccess = false;
+    let dynamicSuccess = false;
+    let staticError = null;
+    let dynamicError = null;
 
-    // Extract head content
-    const headContent = $('head').html() || '';
-
-    const imgSrcs = new Set();
-    const imgData = new Map(); // Store additional data like alt text
-    
-    $('img').each((_, elem) => {
-      let src = $(elem).attr('src');
-      const altText = $(elem).attr('alt') || '-';
-
-      if (!src && scrapeLazy) {
-        const candidates = [
-          'data-src',
-          'data-original',
-          'data-url',
-          'data-lazy',
-          'data-srcset',
-          'data-lazy-src'
-        ];
-        for (const attr of candidates) {
-          const val = $(elem).attr(attr);
-          if (val) { src = val; break; }
-        }
-        // handle srcset like formats
-        if (src && src.includes(',')) {
-          src = src.split(',')[0].trim().split(' ')[0];
-        }
-      }
-
-      if (src) {
-        const full = resolveUrl(url, src);
-        if (!full) return;
-        if (full.startsWith('data:') || full.startsWith('javascript:')) return;
-        imgSrcs.add(full);
-        // Store alt text for this URL
-        imgData.set(full, { alt: altText });
-      }
-    });
-
-    const results = [];
-
-    // Extract background images from inline style attributes
-    $('[style*="url("]').each((_, elem) => {
-      const style = $(elem).attr('style');
-      if (!style) return;
-      const urlRegex = /url\((['\"]?)(.*?)\1\)/gi;
-      let match;
-      while ((match = urlRegex.exec(style)) !== null) {
-        const raw = match[2];
-        if (!raw) continue;
-        const full = resolveUrl(url, raw);
-        if (!full) continue;
-        if (full.startsWith('data:') || full.startsWith('javascript:')) continue;
-        imgSrcs.add(full);
-      }
-    });
-
-    // Extract inline SVG elements embedded directly in HTML
-    $('svg').each((i, elem) => {
-      const svgHtml = $.html(elem);
-      results.push({
-        url: null,
-        inline: true,
-        content: svgHtml,
-        width: $(elem).attr('width') || '-',
-        height: $(elem).attr('height') || '-',
-        type: 'svg',
-        size: Buffer.byteLength(svgHtml, 'utf8'),
-        filename: '-',
-        alt: '-' // SVGs don't have alt text
-      });
-    });
-
-    for (const imgUrl of imgSrcs) {
-      const imgInfo = imgData.get(imgUrl) || {};
-      const meta = {
-        url: imgUrl,
-        width: '-',
-        height: '-',
-        type: '-',
-        size: '-',
-        filename: getFileName(imgUrl),
-        inline: false,
-        alt: imgInfo.alt || '-' // Use stored alt text or default to '-'
-      };
+    // If dynamic is forced, skip static scraping
+    if (dynamic === 'dynamic') {
+      debugLog(`Dynamic scraping requested for: ${url}`);
+      dynamicAttempted = true;
       try {
-        // quick HEAD check for size
-        try {
-          const head = await axios.head(imgUrl, { timeout: 8000 });
-          const len = parseInt(head.headers['content-length'] || '0', 10);
-          if (len && len > 5 * 1024 * 1024) throw new Error('too big');
-        } catch {}
-
-        const info = await probe(imgUrl);
-        meta.width = info.width;
-        meta.height = info.height;
-        meta.type = info.type;
-        meta.size = info.length; // bytes
-      } catch (_) {
-        // If probe fails (e.g., SVG or remote restriction), still include the image
-        const ext = imgUrl.split('.').pop().split(/#|\?/)[0];
-        if (ext.length <= 5) meta.type = ext;
+        result = await scrapeWithPlaywright(url);
+        scrapingMethod = 'dynamic';
+        dynamicSuccess = true;
+        debugLog(`Dynamic scraping successful for: ${url} (${result.images.length} images)`);
+      } catch (dynamicErr) {
+        dynamicError = dynamicErr.message;
+        throw dynamicErr;
       }
-      results.push(meta);
+    } else {
+      // Try static scraping first for 'static' or 'auto' modes
+      debugLog(`Attempting static scraping for: ${url}`);
+      staticAttempted = true;
+      try {
+        result = await scrapeStatic(url, scrapeLazy);
+        scrapingMethod = 'static';
+        staticSuccess = true;
+        debugLog(`Static scraping successful for: ${url} (${result.images.length} images)`);
+      } catch (staticErr) {
+        staticError = staticErr.message;
+        debugLog(`Static scraping failed for: ${url} - ${staticErr.message}`);
+      }
+
+              // Intelligent fallback logic for auto mode - always try dynamic to compare results
+        if (dynamic === 'auto') {
+          debugLog(`Auto mode: trying dynamic scraping to compare with static results for: ${url}`);
+          fallbackUsed = true;
+          dynamicAttempted = true;
+          try {
+            const dynamicResult = await scrapeWithPlaywright(url);
+            // Use dynamic result if it found significantly more images or if static failed
+            if (dynamicResult.images.length > result.images.length || !staticSuccess) {
+              result = dynamicResult;
+              scrapingMethod = 'dynamic';
+              dynamicSuccess = true;
+              debugLog(`Dynamic scraping successful for: ${url} (${result.images.length} images, using dynamic result)`);
+            } else {
+              debugLog(`Dynamic scraping found ${dynamicResult.images.length} images, keeping static result (${result.images.length} images)`);
+              dynamicSuccess = true; // Still mark as successful
+            }
+          } catch (dynamicErr) {
+            dynamicError = dynamicErr.message;
+            debugLog(`Dynamic scraping failed, keeping static result: ${dynamicErr.message}`);
+            // Don't throw - keep the static result
+          }
+        }
     }
 
-    // Return both images and head content
-    return res.json({
-      images: results,
-      headContent: headContent
-    });
+    // Return enhanced response with scraping metadata
+    const response = {
+      images: result.images,
+      headContent: result.headContent,
+      scrapingMethod: scrapingMethod,
+      fallbackUsed: fallbackUsed,
+      totalImages: result.images.length
+    };
+
+    // Only include debug info when DEBUG mode is enabled
+    if (DEBUG) {
+      response.debug = {
+        staticAttempted,
+        dynamicAttempted,
+        staticSuccess,
+        dynamicSuccess,
+        staticError,
+        dynamicError
+      };
+    }
+
+    return res.json(response);
+
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: 'Failed to scrape the provided URL.' });
+    debugLog(`Error scraping ${url}:`, err.message);
+    debugLog(`Full error:`, err);
+    
+    // If dynamic scraping failed and we haven't tried static yet, try static as fallback
+    if (scrapingMethod === 'dynamic' && !fallbackUsed) {
+      try {
+        debugLog(`Dynamic scraping failed, trying static fallback for: ${url}`);
+        const result = await scrapeStatic(url, scrapeLazy);
+        const fallbackResponse = {
+          images: result.images,
+          headContent: result.headContent,
+          scrapingMethod: 'static',
+          fallbackUsed: true,
+          totalImages: result.images.length
+        };
+
+        // Only include warning when DEBUG mode is enabled
+        if (DEBUG) {
+          fallbackResponse.warning = 'Dynamic scraping failed, used static fallback';
+        }
+
+        return res.json(fallbackResponse);
+      } catch (staticErr) {
+        debugLog(`Static fallback also failed:`, staticErr.message);
+      }
+    }
+
+    const errorResponse = { 
+      error: 'Failed to scrape the provided URL.'
+    };
+
+    // Only include debug info when DEBUG mode is enabled
+    if (DEBUG) {
+      errorResponse.scrapingMethod = scrapingMethod;
+      errorResponse.fallbackUsed = fallbackUsed;
+      errorResponse.errorMessage = err.message;
+    }
+
+    return res.status(500).json(errorResponse);
   }
 });
 
@@ -227,6 +726,19 @@ app.get('/api/download', async (req, res) => {
   }
 });
 
+// Health check endpoint for monitoring and load balancers
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+    version: '1.0.0',
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Debug mode: ${DEBUG ? 'enabled' : 'disabled'}`);
 }); 

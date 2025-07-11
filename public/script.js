@@ -16,10 +16,83 @@ const drawerToggle = document.getElementById('drawer-toggle');
 const drawerContent = document.getElementById('drawer-content');
 const headContentPre = document.getElementById('head-content');
 const copyDrawerBtn = document.getElementById('copy-drawer');
+const debugPanel = document.getElementById('debug-panel');
+const debugToggle = document.getElementById('debug-toggle');
+const staticStatus = document.getElementById('static-status');
+const dynamicStatus = document.getElementById('dynamic-status');
+const methodUsed = document.getElementById('method-used');
+const fallbackUsed = document.getElementById('fallback-used');
 let loadingInterval;
 
 // Feature toggle - set to false to disable SEO metadata feature
 const SEO_FEATURE_ENABLED = seoDrawer ? seoDrawer.dataset.featureEnabled === 'true' : false;
+
+// Debug feature toggle - reads from HTML data attribute
+const DEBUG_FEATURE_ENABLED = debugPanel ? debugPanel.dataset.featureEnabled === 'true' : false;
+
+// Debug panel functions
+function showDebugPanel() {
+  if (debugPanel) {
+    debugPanel.style.display = 'block';
+  }
+}
+
+function hideDebugPanel() {
+  if (debugPanel) {
+    debugPanel.style.display = 'none';
+  }
+}
+
+function updateDebugPanel(debug, scrapingMethod, fallbackUsedFlag, warning) {
+  if (!debugPanel) return;
+  
+  // Use debug data from backend if available
+  const staticAttempted = debug.staticAttempted || false;
+  const dynamicAttempted = debug.dynamicAttempted || false;
+  const staticSuccess = debug.staticSuccess || false;
+  const dynamicSuccess = debug.dynamicSuccess || false;
+  
+  // Update status indicators
+  if (staticStatus) {
+    if (staticAttempted) {
+      staticStatus.textContent = staticSuccess ? 'Successful' : 'Failed';
+      staticStatus.className = `debug-status ${staticSuccess ? 'success' : 'failed'}`;
+    } else {
+      staticStatus.textContent = 'Not Attempted';
+      staticStatus.className = 'debug-status not-attempted';
+    }
+  }
+  
+  if (dynamicStatus) {
+    if (dynamicAttempted) {
+      dynamicStatus.textContent = dynamicSuccess ? 'Successful' : 'Failed';
+      dynamicStatus.className = `debug-status ${dynamicSuccess ? 'success' : 'failed'}`;
+    } else {
+      dynamicStatus.textContent = 'Not Attempted';
+      dynamicStatus.className = 'debug-status not-attempted';
+    }
+  }
+  
+  if (methodUsed) {
+    methodUsed.textContent = scrapingMethod || 'Unknown';
+    methodUsed.className = 'debug-method';
+  }
+  
+  if (fallbackUsed) {
+    const usedFallback = fallbackUsedFlag || false;
+    fallbackUsed.textContent = usedFallback ? 'Yes' : 'No';
+    fallbackUsed.className = `debug-fallback ${usedFallback ? 'yes' : 'no'}`;
+  }
+  
+  showDebugPanel();
+}
+
+// Debug panel toggle
+if (debugToggle) {
+  debugToggle.addEventListener('click', () => {
+    hideDebugPanel();
+  });
+}
 
 function updateDisplayedCount(){
   let visible=0;
@@ -184,12 +257,13 @@ if(clearHistoryBtn){
 }
 
 // helper to handle response
-async function handleScrape(url, includeLazy = true) {
+async function handleScrape(url, includeLazy = true, dynamicMode = 'auto') {
   tbody.innerHTML = '';
   table.style.display = 'none';
   if (summaryBar) summaryBar.style.display = 'none';
   if (inlineLabel) inlineLabel.style.display = 'none';
   if (seoDrawer && SEO_FEATURE_ENABLED) seoDrawer.style.display = 'none';
+  hideDebugPanel();
   clearMessage();
   loading.textContent = 'Loading';
   loading.style.display = 'block';
@@ -206,7 +280,7 @@ async function handleScrape(url, includeLazy = true) {
     const res = await fetch('/api/scrape', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, lazy: includeLazy })
+      body: JSON.stringify({ url, lazy: includeLazy, dynamic: dynamicMode })
     });
     const data = await res.json();
     loading.style.display = 'none';
@@ -215,6 +289,10 @@ async function handleScrape(url, includeLazy = true) {
 
     if (!res.ok) {
       showMessage(data.error || 'Failed to scrape.\n\nPossible reasons: The site might block scraping, require authentication, or the URL is invalid.');
+      // Only show debug panel if debug data is present and feature is enabled
+      if (DEBUG_FEATURE_ENABLED && data.debug) {
+        updateDebugPanel(data.debug, data.scrapingMethod, data.fallbackUsed, data.errorMessage);
+      }
       saveHistory(url, 0, true);
       return;
     }
@@ -222,6 +300,11 @@ async function handleScrape(url, includeLazy = true) {
     // Handle new response format
     const images = data.images || data; // Support both old and new format
     const headContent = data.headContent || '';
+
+    // Only show debug panel if debug data is present and feature is enabled
+    if (DEBUG_FEATURE_ENABLED && data.debug) {
+      updateDebugPanel(data.debug, data.scrapingMethod, data.fallbackUsed, data.warning);
+    }
 
     if (!images.length) {
       showMessage('No images found.\n\nPossible reasons: 1) Images load dynamically via JavaScript or lazy-loading. 2) Images are set as CSS backgrounds. 3) The site requires authentication/cookies. 4) The site blocks scraping tools or uses CORS restrictions.', true);
@@ -234,7 +317,7 @@ async function handleScrape(url, includeLazy = true) {
     if (summaryBar) summaryBar.style.display = 'flex';
     if (inlineLabel) inlineLabel.style.display = 'inline-flex';
     if (inlineToggle) {
-      inlineToggle.checked = false;
+      inlineToggle.checked = false; // Hide embedded SVGs by default
     }
     if(searchInput){
       searchInput.value='';
@@ -516,6 +599,30 @@ function sortTable(columnIndex, ascending) {
 // Initialize sortable headers once on page load
 document.addEventListener('DOMContentLoaded', () => {
   initSortable();
+  
+  // Initialize form handling
+  const form = document.getElementById('scrape-form');
+  const urlInput = document.getElementById('website-url');
+  
+  if (form) {
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const url = urlInput.value.trim();
+      if (url) {
+        handleScrape(url, true, 'auto');
+      }
+    });
+  }
+  
+  // Also handle history clicks
+  document.addEventListener('click', (e) => {
+    if (e.target.matches('#history a')) {
+      e.preventDefault();
+      const url = e.target.title || e.target.textContent;
+      if (urlInput) urlInput.value = url;
+      if (form) form.requestSubmit();
+    }
+  });
   
   // Initialize drawer toggle functionality
   if (drawerToggle && drawerContent) {

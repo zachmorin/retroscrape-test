@@ -193,7 +193,7 @@ td.no-alt {
   display: flex;
   flex-wrap: wrap;
   column-gap: 6px;
-  row-gap: 10px;
+  row-gap: 2px;
 }
 
 #history li {
@@ -323,6 +323,11 @@ body.dark th, body.dark td {
 
 body.dark th {
   background-color: #111;
+}
+
+body.dark th[data-sort]:hover {
+  background-color: #333;
+  color: #fff;
 }
 
 body.dark .preview-container {
@@ -1120,5 +1125,167 @@ body.dark .doctype { color: #f55; }
   .code-line::before {
     width: 25px;
     font-size: 10px;
+  }
+}
+
+/* Debug Panel Styles */
+.debug-panel {
+  margin: 20px 0;
+  border: 2px solid #000;
+  background: #f9f9f9;
+  padding: 0;
+}
+
+.debug-header {
+  background: #e8e8e8;
+  padding: 10px 15px;
+  border-bottom: 1px solid #000;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.debug-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.debug-content {
+  padding: 15px;
+}
+
+.debug-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.debug-row:last-child {
+  margin-bottom: 0;
+}
+
+.debug-label {
+  font-weight: 600;
+  color: #333;
+}
+
+.debug-status {
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.debug-status.success {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.debug-status.failed {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.debug-status.not-attempted {
+  background: #e2e3e5;
+  color: #6c757d;
+  border: 1px solid #d6d8db;
+}
+
+.debug-method {
+  font-weight: 700;
+  color: #007bff;
+}
+
+.debug-fallback {
+  font-weight: 700;
+}
+
+.debug-fallback.yes {
+  color: #dc3545;
+}
+
+.debug-fallback.no {
+  color: #28a745;
+}
+
+/* Dark mode debug panel */
+body.dark .debug-panel {
+  background: #2a2a2a;
+  border-color: #555;
+}
+
+body.dark .debug-header {
+  background: #404040;
+  border-color: #555;
+}
+
+body.dark .debug-header h3 {
+  color: #e6e6e6;
+}
+
+body.dark .debug-label {
+  color: #e6e6e6;
+}
+
+body.dark .debug-status.success {
+  background: #1e3a1e;
+  color: #90ee90;
+  border-color: #2d5a2d;
+}
+
+body.dark .debug-status.failed {
+  background: #3a1e1e;
+  color: #ff9999;
+  border-color: #5a2d2d;
+}
+
+body.dark .debug-status.not-attempted {
+  background: #3a3a3a;
+  color: #cccccc;
+  border-color: #555;
+}
+
+body.dark .debug-method {
+  color: #66b3ff;
+}
+
+/* Dark mode select styling */
+body.dark select {
+  background: #000;
+  color: #e6e6e6;
+  border: 1px solid #e6e6e6;
+}
+
+@media (max-width: 600px) {
+  .debug-panel {
+    margin: 15px 0;
+  }
+  
+  .debug-header {
+    padding: 8px 10px;
+  }
+  
+  .debug-header h3 {
+    font-size: 12px;
+  }
+  
+  .debug-content {
+    padding: 10px;
+  }
+  
+  .debug-row {
+    font-size: 11px;
+    margin-bottom: 6px;
+  }
+  
+  .debug-status {
+    font-size: 10px;
+    padding: 1px 6px;
   }
 } 
