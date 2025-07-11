@@ -9,6 +9,7 @@ const rateLimit = require('express-rate-limit');
 const ipaddr = require('ipaddr.js');
 const dnsPromises = require('dns').promises;
 const { chromium } = require('playwright');
+const logger = require('./logger');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,12 +17,12 @@ const PORT = process.env.PORT || 3000;
 // Debug mode flag - disabled in production
 const DEBUG = process.env.NODE_ENV !== 'production';
 
-// Debug logging helper
-function debugLog(...args) {
-  if (DEBUG) {
-    console.log(`[${new Date().toISOString()}]`, ...args);
-  }
-}
+// Log initial startup information
+logger.info('Server starting', {
+  nodeVersion: process.version,
+  platform: process.platform,
+  environment: process.env.NODE_ENV || 'development'
+});
 
 app.use(cors());
 // Security headers
@@ -89,10 +90,18 @@ function getFileName(fileUrl) {
 // Dynamic scraping function using Playwright
 async function scrapeWithPlaywright(url) {
   let browser;
+  const consoleMessages = [];
+  const failedRequests = [];
+  
   try {
     // Log memory usage for Render.com debugging
     const memUsage = process.memoryUsage();
-    debugLog(`Memory before browser launch: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`);
+    logger.debug('Memory before browser launch', { 
+      url,
+      heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+      heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+      rss: Math.round(memUsage.rss / 1024 / 1024)
+    });
     
     // Launch browser with stealth settings optimized for Render.com
     browser = await chromium.launch({
@@ -116,9 +125,39 @@ async function scrapeWithPlaywright(url) {
       ]
     });
     
-    debugLog(`Browser launched successfully for: ${url}`);
+    logger.info('Browser launched successfully', { url });
 
     const page = await browser.newPage();
+
+    // Capture console messages
+    page.on('console', msg => {
+      consoleMessages.push({
+        type: msg.type(),
+        text: msg.text(),
+        location: msg.location()
+      });
+    });
+
+    // Track failed network requests
+    page.on('requestfailed', request => {
+      failedRequests.push({
+        url: request.url(),
+        method: request.method(),
+        failure: request.failure()
+      });
+    });
+
+    // Track responses with error status codes
+    page.on('response', response => {
+      if (response.status() >= 400) {
+        failedRequests.push({
+          url: response.url(),
+          method: response.request().method(),
+          status: response.status(),
+          statusText: response.statusText()
+        });
+      }
+    });
 
     // Remove automation indicators
     await page.addInitScript(() => {
@@ -137,10 +176,29 @@ async function scrapeWithPlaywright(url) {
     });
 
     // Navigate to the page
+    const navigationStart = Date.now();
     await page.goto(url, { 
       waitUntil: 'networkidle',
       timeout: 30000 
     });
+    const navigationTime = Date.now() - navigationStart;
+    
+    logger.info('Page loaded', { 
+      url, 
+      navigationTime,
+      consoleMessageCount: consoleMessages.length,
+      failedRequestCount: failedRequests.length
+    });
+
+    // Log console messages if any
+    if (consoleMessages.length > 0) {
+      logger.logBrowserConsole(url, consoleMessages);
+    }
+
+    // Log failed requests if any
+    if (failedRequests.length > 0) {
+      logger.logNetworkFailure(url, failedRequests);
+    }
 
     // Wait for potential WordPress blocks or dynamic content
     try {
@@ -333,6 +391,15 @@ async function scrapeWithPlaywright(url) {
     });
 
     await browser.close();
+    
+    // Log memory after browser close
+    const memAfter = process.memoryUsage();
+    logger.debug('Memory after browser close', { 
+      url,
+      heapUsed: Math.round(memAfter.heapUsed / 1024 / 1024),
+      heapTotal: Math.round(memAfter.heapTotal / 1024 / 1024),
+      rss: Math.round(memAfter.rss / 1024 / 1024)
+    });
 
     // Process the extracted image data
     const results = [];
@@ -373,6 +440,14 @@ async function scrapeWithPlaywright(url) {
       }
     }
 
+    logger.info('Scraping completed successfully', {
+      url,
+      method: 'dynamic',
+      imageCount: results.length,
+      consoleMessages: consoleMessages.length,
+      failedRequests: failedRequests.length
+    });
+
     return { images: results, headContent };
 
   } catch (error) {
@@ -380,13 +455,15 @@ async function scrapeWithPlaywright(url) {
       await browser.close();
     }
     
-    // Enhanced error logging for Render.com debugging
-    debugLog(`Playwright error for ${url}:`, error.message);
-    debugLog(`Error stack:`, error.stack);
+    // Comprehensive error logging
+    const context = {
+      consoleMessages,
+      failedRequests,
+      userAgent: 'Chromium (Playwright)',
+      memory: process.memoryUsage()
+    };
     
-    // Log memory usage on error
-    const memUsage = process.memoryUsage();
-    debugLog(`Memory on error: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`);
+    logger.logScrapingError(url, 'dynamic', error, context);
     
     // Provide more specific error messages
     if (error.message.includes('Protocol error') || error.message.includes('Target closed')) {
@@ -403,198 +480,231 @@ async function scrapeWithPlaywright(url) {
 
 // Static scraping function (extracted from original endpoint)
 async function scrapeStatic(url, scrapeLazy = true) {
-  const response = await axios.get(url, { timeout: 8000, maxContentLength: 5 * 1024 * 1024 });
-  const $ = cheerio.load(response.data);
-
-  // Extract head content
-  const headContent = $('head').html() || '';
-
-  const imgSrcs = new Set();
-  const imgData = new Map(); // Store additional data like alt text
-  
-  $('img').each((_, elem) => {
-    let src = $(elem).attr('src');
-    const altText = $(elem).attr('alt') || '-';
-
-    if (!src && scrapeLazy) {
-      const candidates = [
-        'data-src',
-        'data-original',
-        'data-url',
-        'data-lazy',
-        'data-srcset',
-        'data-lazy-src'
-      ];
-      for (const attr of candidates) {
-        const val = $(elem).attr(attr);
-        if (val) { src = val; break; }
-      }
-      // handle srcset like formats
-      if (src && src.includes(',')) {
-        src = src.split(',')[0].trim().split(' ')[0];
-      }
-    }
-
-    if (src) {
-      const full = resolveUrl(url, src);
-      if (!full) return;
-      if (full.startsWith('data:') || full.startsWith('javascript:')) return;
-      imgSrcs.add(full);
-      // Store alt text for this URL
-      imgData.set(full, { alt: altText });
-    }
-  });
-
-  const results = [];
-
-  // Extract background images from inline style attributes
-  $('[style*="url("]').each((_, elem) => {
-    const style = $(elem).attr('style');
-    if (!style) return;
-    const urlRegex = /url\((['\"]?)(.*?)\1\)/gi;
-    let match;
-    while ((match = urlRegex.exec(style)) !== null) {
-      const raw = match[2];
-      if (!raw) continue;
-      const full = resolveUrl(url, raw);
-      if (!full) continue;
-      if (full.startsWith('data:') || full.startsWith('javascript:')) continue;
-      imgSrcs.add(full);
-    }
-  });
-
-  // Extract inline SVG elements embedded directly in HTML
-  $('svg').each((i, elem) => {
-    const svgHtml = $.html(elem);
-    results.push({
-      url: null,
-      inline: true,
-      content: svgHtml,
-      width: $(elem).attr('width') || '-',
-      height: $(elem).attr('height') || '-',
-      type: 'svg',
-      size: Buffer.byteLength(svgHtml, 'utf8'),
-      filename: '-',
-      alt: '-' // SVGs don't have alt text
+  try {
+    logger.debug('Starting static scraping', { url, scrapeLazy });
+    
+    const response = await axios.get(url, { 
+      timeout: 8000, 
+      maxContentLength: 5 * 1024 * 1024,
+      validateStatus: (status) => status < 500 // Don't throw on 4xx errors
     });
-  });
-
-  // Extract object tags with image data
-  $('object[data]').each((_, elem) => {
-    const data = $(elem).attr('data');
-    const type = $(elem).attr('type') || '';
     
-    // Filter for image-related object types
-    const isImageObject = type.startsWith('image/') || 
-                         data?.match(/\.(jpg|jpeg|png|gif|bmp|webp|svg|ico|tiff?)(\?|#|$)/i);
+    logger.debug('Static scraping response received', { 
+      url,
+      status: response.status,
+      contentLength: response.headers['content-length'],
+      contentType: response.headers['content-type']
+    });
     
-    if (data && isImageObject) {
-      const full = resolveUrl(url, data);
-      if (!full) return;
-      if (full.startsWith('data:') || full.startsWith('javascript:')) return;
-      imgSrcs.add(full);
-      // Store alt text or fallback text for this URL
-      const altText = $(elem).attr('alt') || $(elem).text()?.trim() || 'Object Image';
-      imgData.set(full, { alt: altText, source: 'object' });
+    if (response.status >= 400) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-  });
+    
+    const $ = cheerio.load(response.data);
 
-  // Extract favicon and app icons from head
-  const faviconSelectors = [
-    'link[rel="icon"]',
-    'link[rel="shortcut icon"]', 
-    'link[rel="apple-touch-icon"]',
-    'link[rel="apple-touch-icon-precomposed"]',
-    'link[rel="mask-icon"]',
-    'meta[property="og:image"]',
-    'meta[name="twitter:image"]',
-    'meta[name="msapplication-TileImage"]'
-  ];
+    // Extract head content
+    const headContent = $('head').html() || '';
 
-  faviconSelectors.forEach(selector => {
-    $(selector).each((_, elem) => {
-      let iconUrl = null;
-      let altText = 'Favicon/App Icon';
-      
-      if (elem.tagName.toLowerCase() === 'link') {
-        iconUrl = $(elem).attr('href');
-        const rel = $(elem).attr('rel') || '';
-        if (rel.includes('apple')) {
-          altText = 'Apple Touch Icon';
-        } else if (rel.includes('mask')) {
-          altText = 'Safari Mask Icon';
-        } else {
-          altText = 'Favicon';
+    const imgSrcs = new Set();
+    const imgData = new Map(); // Store additional data like alt text
+    
+    $('img').each((_, elem) => {
+      let src = $(elem).attr('src');
+      const altText = $(elem).attr('alt') || '-';
+
+      if (!src && scrapeLazy) {
+        const candidates = [
+          'data-src',
+          'data-original',
+          'data-url',
+          'data-lazy',
+          'data-srcset',
+          'data-lazy-src'
+        ];
+        for (const attr of candidates) {
+          const val = $(elem).attr(attr);
+          if (val) { src = val; break; }
         }
-      } else if (elem.tagName.toLowerCase() === 'meta') {
-        iconUrl = $(elem).attr('content');
-        const name = $(elem).attr('name') || $(elem).attr('property') || '';
-        if (name.includes('og:image')) {
-          altText = 'Open Graph Image';
-        } else if (name.includes('twitter')) {
-          altText = 'Twitter Card Image';
-        } else if (name.includes('msapplication')) {
-          altText = 'Windows Tile Image';
+        // handle srcset like formats
+        if (src && src.includes(',')) {
+          src = src.split(',')[0].trim().split(' ')[0];
         }
       }
 
-      if (iconUrl) {
-        const full = resolveUrl(url, iconUrl);
+      if (src) {
+        const full = resolveUrl(url, src);
         if (!full) return;
         if (full.startsWith('data:') || full.startsWith('javascript:')) return;
         imgSrcs.add(full);
-        
-        // Extract dimensions from sizes attribute if available
-        const sizes = $(elem).attr('sizes') || '';
-        const sizeParts = sizes.split('x');
-        const width = sizeParts[0] || '-';
-        const height = sizeParts[1] || '-';
-        
-        imgData.set(full, { 
-          alt: altText, 
-          source: 'favicon',
-          width: width,
-          height: height
-        });
+        // Store alt text for this URL
+        imgData.set(full, { alt: altText });
       }
     });
-  });
 
-  for (const imgUrl of imgSrcs) {
-    const imgInfo = imgData.get(imgUrl) || {};
-    const meta = {
-      url: imgUrl,
-      width: imgInfo.width || '-',
-      height: imgInfo.height || '-',
-      type: '-',
-      size: '-',
-      filename: getFileName(imgUrl),
-      inline: false,
-      alt: imgInfo.alt || '-', // Use stored alt text or default to '-'
-      source: imgInfo.source || 'img' // Track source: 'img', 'object', etc.
-    };
-    try {
-      // quick HEAD check for size
+    const results = [];
+
+    // Extract background images from inline style attributes
+    $('[style*="url("]').each((_, elem) => {
+      const style = $(elem).attr('style');
+      if (!style) return;
+      const urlRegex = /url\((['\"]?)(.*?)\1\)/gi;
+      let match;
+      while ((match = urlRegex.exec(style)) !== null) {
+        const raw = match[2];
+        if (!raw) continue;
+        const full = resolveUrl(url, raw);
+        if (!full) continue;
+        if (full.startsWith('data:') || full.startsWith('javascript:')) continue;
+        imgSrcs.add(full);
+      }
+    });
+
+    // Extract inline SVG elements embedded directly in HTML
+    $('svg').each((i, elem) => {
+      const svgHtml = $.html(elem);
+      results.push({
+        url: null,
+        inline: true,
+        content: svgHtml,
+        width: $(elem).attr('width') || '-',
+        height: $(elem).attr('height') || '-',
+        type: 'svg',
+        size: Buffer.byteLength(svgHtml, 'utf8'),
+        filename: '-',
+        alt: '-' // SVGs don't have alt text
+      });
+    });
+
+    // Extract object tags with image data
+    $('object[data]').each((_, elem) => {
+      const data = $(elem).attr('data');
+      const type = $(elem).attr('type') || '';
+      
+      // Filter for image-related object types
+      const isImageObject = type.startsWith('image/') || 
+                           data?.match(/\.(jpg|jpeg|png|gif|bmp|webp|svg|ico|tiff?)(\?|#|$)/i);
+      
+      if (data && isImageObject) {
+        const full = resolveUrl(url, data);
+        if (!full) return;
+        if (full.startsWith('data:') || full.startsWith('javascript:')) return;
+        imgSrcs.add(full);
+        // Store alt text or fallback text for this URL
+        const altText = $(elem).attr('alt') || $(elem).text()?.trim() || 'Object Image';
+        imgData.set(full, { alt: altText, source: 'object' });
+      }
+    });
+
+    // Extract favicon and app icons from head
+    const faviconSelectors = [
+      'link[rel="icon"]',
+      'link[rel="shortcut icon"]', 
+      'link[rel="apple-touch-icon"]',
+      'link[rel="apple-touch-icon-precomposed"]',
+      'link[rel="mask-icon"]',
+      'meta[property="og:image"]',
+      'meta[name="twitter:image"]',
+      'meta[name="msapplication-TileImage"]'
+    ];
+
+    faviconSelectors.forEach(selector => {
+      $(selector).each((_, elem) => {
+        let iconUrl = null;
+        let altText = 'Favicon/App Icon';
+        
+        if (elem.tagName.toLowerCase() === 'link') {
+          iconUrl = $(elem).attr('href');
+          const rel = $(elem).attr('rel') || '';
+          if (rel.includes('apple')) {
+            altText = 'Apple Touch Icon';
+          } else if (rel.includes('mask')) {
+            altText = 'Safari Mask Icon';
+          } else {
+            altText = 'Favicon';
+          }
+        } else if (elem.tagName.toLowerCase() === 'meta') {
+          iconUrl = $(elem).attr('content');
+          const name = $(elem).attr('name') || $(elem).attr('property') || '';
+          if (name.includes('og:image')) {
+            altText = 'Open Graph Image';
+          } else if (name.includes('twitter')) {
+            altText = 'Twitter Card Image';
+          } else if (name.includes('msapplication')) {
+            altText = 'Windows Tile Image';
+          }
+        }
+
+        if (iconUrl) {
+          const full = resolveUrl(url, iconUrl);
+          if (!full) return;
+          if (full.startsWith('data:') || full.startsWith('javascript:')) return;
+          imgSrcs.add(full);
+          
+          // Extract dimensions from sizes attribute if available
+          const sizes = $(elem).attr('sizes') || '';
+          const sizeParts = sizes.split('x');
+          const width = sizeParts[0] || '-';
+          const height = sizeParts[1] || '-';
+          
+          imgData.set(full, { 
+            alt: altText, 
+            source: 'favicon',
+            width: width,
+            height: height
+          });
+        }
+      });
+    });
+
+    for (const imgUrl of imgSrcs) {
+      const imgInfo = imgData.get(imgUrl) || {};
+      const meta = {
+        url: imgUrl,
+        width: imgInfo.width || '-',
+        height: imgInfo.height || '-',
+        type: '-',
+        size: '-',
+        filename: getFileName(imgUrl),
+        inline: false,
+        alt: imgInfo.alt || '-', // Use stored alt text or default to '-'
+        source: imgInfo.source || 'img' // Track source: 'img', 'object', etc.
+      };
       try {
-        const head = await axios.head(imgUrl, { timeout: 8000 });
-        const len = parseInt(head.headers['content-length'] || '0', 10);
-        if (len && len > 5 * 1024 * 1024) throw new Error('too big');
-      } catch {}
+        // quick HEAD check for size
+        try {
+          const head = await axios.head(imgUrl, { timeout: 8000 });
+          const len = parseInt(head.headers['content-length'] || '0', 10);
+          if (len && len > 5 * 1024 * 1024) throw new Error('too big');
+        } catch {}
 
-      const info = await probe(imgUrl);
-      meta.width = info.width;
-      meta.height = info.height;
-      meta.type = info.type;
-      meta.size = info.length; // bytes
-    } catch (_) {
-      // If probe fails (e.g., SVG or remote restriction), still include the image
-      const ext = imgUrl.split('.').pop().split(/#|\?/)[0];
-      if (ext.length <= 5) meta.type = ext;
+        const info = await probe(imgUrl);
+        meta.width = info.width;
+        meta.height = info.height;
+        meta.type = info.type;
+        meta.size = info.length; // bytes
+      } catch (_) {
+        // If probe fails (e.g., SVG or remote restriction), still include the image
+        const ext = imgUrl.split('.').pop().split(/#|\?/)[0];
+        if (ext.length <= 5) meta.type = ext;
+      }
+      results.push(meta);
     }
-    results.push(meta);
-  }
 
-  return { images: results, headContent };
+    logger.info('Static scraping completed successfully', {
+      url,
+      method: 'static',
+      imageCount: results.length
+    });
+
+    return { images: results, headContent };
+    
+  } catch (error) {
+    logger.logScrapingError(url, 'static', error, {
+      timeout: 8000,
+      maxContentLength: 5 * 1024 * 1024
+    });
+    throw error;
+  }
 }
 
 // Enhanced scrape endpoint with hybrid static/dynamic approach
@@ -623,34 +733,34 @@ app.post('/api/scrape', async (req, res) => {
 
     // If dynamic is forced, skip static scraping
     if (dynamic === 'dynamic') {
-      debugLog(`Dynamic scraping requested for: ${url}`);
+      logger.debug(`Dynamic scraping requested for: ${url}`);
       dynamicAttempted = true;
       try {
         result = await scrapeWithPlaywright(url);
         scrapingMethod = 'dynamic';
         dynamicSuccess = true;
-        debugLog(`Dynamic scraping successful for: ${url} (${result.images.length} images)`);
+        logger.debug(`Dynamic scraping successful for: ${url} (${result.images.length} images)`);
       } catch (dynamicErr) {
         dynamicError = dynamicErr.message;
         throw dynamicErr;
       }
     } else {
       // Try static scraping first for 'static' or 'auto' modes
-      debugLog(`Attempting static scraping for: ${url}`);
+      logger.debug(`Attempting static scraping for: ${url}`);
       staticAttempted = true;
       try {
         result = await scrapeStatic(url, scrapeLazy);
         scrapingMethod = 'static';
         staticSuccess = true;
-        debugLog(`Static scraping successful for: ${url} (${result.images.length} images)`);
+        logger.debug(`Static scraping successful for: ${url} (${result.images.length} images)`);
       } catch (staticErr) {
         staticError = staticErr.message;
-        debugLog(`Static scraping failed for: ${url} - ${staticErr.message}`);
+        logger.debug(`Static scraping failed for: ${url} - ${staticErr.message}`);
       }
 
               // Intelligent fallback logic for auto mode - always try dynamic to compare results
         if (dynamic === 'auto') {
-          debugLog(`Auto mode: trying dynamic scraping to compare with static results for: ${url}`);
+          logger.debug(`Auto mode: trying dynamic scraping to compare with static results for: ${url}`);
           fallbackUsed = true;
           dynamicAttempted = true;
           try {
@@ -660,14 +770,14 @@ app.post('/api/scrape', async (req, res) => {
               result = dynamicResult;
               scrapingMethod = 'dynamic';
               dynamicSuccess = true;
-              debugLog(`Dynamic scraping successful for: ${url} (${result.images.length} images, using dynamic result)`);
+              logger.debug(`Dynamic scraping successful for: ${url} (${result.images.length} images, using dynamic result)`);
             } else {
-              debugLog(`Dynamic scraping found ${dynamicResult.images.length} images, keeping static result (${result.images.length} images)`);
+              logger.debug(`Dynamic scraping found ${dynamicResult.images.length} images, keeping static result (${result.images.length} images)`);
               dynamicSuccess = true; // Still mark as successful
             }
           } catch (dynamicErr) {
             dynamicError = dynamicErr.message;
-            debugLog(`Dynamic scraping failed, keeping static result: ${dynamicErr.message}`);
+            logger.debug(`Dynamic scraping failed, keeping static result: ${dynamicErr.message}`);
             // Don't throw - keep the static result
           }
         }
@@ -697,13 +807,13 @@ app.post('/api/scrape', async (req, res) => {
     return res.json(response);
 
   } catch (err) {
-    debugLog(`Error scraping ${url}:`, err.message);
-    debugLog(`Full error:`, err);
+    logger.error(`Error scraping ${url}:`, err.message);
+    logger.debug(`Full error:`, err);
     
     // If dynamic scraping failed and we haven't tried static yet, try static as fallback
     if (scrapingMethod === 'dynamic' && !fallbackUsed) {
       try {
-        debugLog(`Dynamic scraping failed, trying static fallback for: ${url}`);
+        logger.debug(`Dynamic scraping failed, trying static fallback for: ${url}`);
         const result = await scrapeStatic(url, scrapeLazy);
         const fallbackResponse = {
           images: result.images,
@@ -720,7 +830,7 @@ app.post('/api/scrape', async (req, res) => {
 
         return res.json(fallbackResponse);
       } catch (staticErr) {
-        debugLog(`Static fallback also failed:`, staticErr.message);
+        logger.debug(`Static fallback also failed:`, staticErr.message);
       }
     }
 
@@ -755,7 +865,7 @@ app.get('/api/download', async (req, res) => {
     res.setHeader('Content-Type', response.headers['content-type'] || 'application/octet-stream');
     response.data.pipe(res);
   } catch (err) {
-    console.error(err);
+    logger.error('Failed to download image', { imgUrl, error: err.message });
     res.status(500).send('Failed to download image');
   }
 });
@@ -771,24 +881,106 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Protected logs endpoint for production debugging
+app.get('/api/logs', (req, res) => {
+  // Simple authentication with query parameter
+  const key = req.query.key;
+  const expectedKey = process.env.LOGS_ACCESS_KEY || 'debug123';
+  
+  if (key !== expectedKey) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  // Get query parameters
+  const limit = parseInt(req.query.limit) || 50;
+  const level = req.query.level || null; // ERROR, WARN, INFO, DEBUG
+  
+  try {
+    const logs = logger.getRecentLogs(limit, level);
+    
+    // Calculate summary statistics
+    const errorCount = logs.filter(log => log.level === 'ERROR').length;
+    const warnCount = logs.filter(log => log.level === 'WARN').length;
+    
+    // Group errors by URL for pattern detection
+    const errorsByUrl = {};
+    logs.filter(log => log.level === 'ERROR' && log.url).forEach(log => {
+      const url = log.url;
+      if (!errorsByUrl[url]) {
+        errorsByUrl[url] = {
+          count: 0,
+          lastError: log.timestamp,
+          errors: []
+        };
+      }
+      errorsByUrl[url].count++;
+      errorsByUrl[url].errors.push({
+        timestamp: log.timestamp,
+        message: log.errorMessage || log.message
+      });
+    });
+    
+    res.json({
+      summary: {
+        totalLogs: logs.length,
+        errors: errorCount,
+        warnings: warnCount,
+        timeRange: {
+          from: logs.length > 0 ? logs[logs.length - 1].timestamp : null,
+          to: logs.length > 0 ? logs[0].timestamp : null
+        }
+      },
+      errorPatterns: errorsByUrl,
+      logs: logs
+    });
+  } catch (err) {
+    logger.error('Failed to retrieve logs', { error: err.message });
+    res.status(500).json({ error: 'Failed to retrieve logs' });
+  }
+});
+
 app.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`Debug mode: ${DEBUG ? 'enabled' : 'disabled'}`);
+  logger.info(`Server listening on http://localhost:${PORT}`);
+  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.info(`Debug mode: ${DEBUG ? 'enabled' : 'disabled'}`);
   
   // Log deployment diagnostics for Render.com
   if (process.env.NODE_ENV === 'production') {
     const memUsage = process.memoryUsage();
-    console.log(`Production startup - Memory: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`);
-    console.log(`Node.js version: ${process.version}`);
-    console.log(`Platform: ${process.platform}`);
+    logger.info('Production startup diagnostics', { 
+      memory: {
+        heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+        heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+        rss: Math.round(memUsage.rss / 1024 / 1024),
+        external: Math.round(memUsage.external / 1024 / 1024)
+      },
+      nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      pid: process.pid,
+      uptime: process.uptime()
+    });
     
     // Test if Playwright is properly installed
-    try {
-      const { chromium } = require('playwright');
-      console.log('Playwright chromium module loaded successfully');
-    } catch (err) {
-      console.error('Playwright chromium module failed to load:', err.message);
-    }
+    (async () => {
+      try {
+        const { chromium } = require('playwright');
+        logger.info('Playwright chromium module loaded successfully');
+        
+        // Test browser launch
+        logger.info('Testing browser launch capability...');
+        const testBrowser = await chromium.launch({
+          headless: true,
+          args: ['--no-sandbox', '--disable-setuid-sandbox', '--single-process']
+        });
+        await testBrowser.close();
+        logger.info('Browser launch test successful');
+      } catch (err) {
+        logger.error('Browser launch test failed', { 
+          error: err.message,
+          stack: err.stack
+        });
+      }
+    })();
   }
 }); 
