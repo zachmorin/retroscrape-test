@@ -449,6 +449,113 @@ body.dark #search-input {
 
 body.dark .tagline {color:#e6e6e6;}
 
+/* Tabs Bar */
+.tabs-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.tabs-list {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.tab-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px dotted #000;
+  background: #f8f9fa;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tab-item.active {
+  background: #fff;
+  border: 1px solid #007bff;
+  color: #007bff;
+}
+
+.tab-item .tab-title {
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-item.active .tab-title {
+  font-weight: 700;
+}
+
+.tab-item .tab-badge {
+  border: 1px solid #000;
+  padding: 1px 4px;
+  background: #fff;
+  font-weight: bold;
+}
+
+.tab-item .tab-close {
+  border: 1px solid #000;
+  background: #fff;
+  line-height: 1;
+  padding: 0 4px;
+}
+.tab-item.active .tab-badge {
+  border-color: #007bff;
+  background: #fff;
+  color: #007bff;
+}
+
+.tab-item.active .tab-close {
+  border-color: #007bff;
+  color: #007bff;
+}
+
+body.dark .tab-item.active .tab-badge {
+  border-color: #0f0;
+  background: #001900;
+  color: #0f0;
+}
+
+body.dark .tab-item.active .tab-close {
+  border-color: #0f0;
+  color: #0f0;
+}
+
+.btn-tab-new {
+  padding: 2px 8px;
+}
+
+/* Status dots */
+.tab-status {
+  width: 8px;
+  height: 8px;
+  border: 1px solid #000;
+  background: #ccc;
+  border-radius: 50%;
+}
+
+.tab-status.loading { background: #ffd166; }
+.tab-status.error { background: #ef476f; }
+.tab-status.done { background: #06d6a0; }
+
+body.dark .tabs-bar { color:#e6e6e6; }
+body.dark .tab-item { background:#111; border-color:#e6e6e6; }
+body.dark .tab-item.active { background:#000; border: 1px solid #0f0; color:#0f0; }
+body.dark .tab-item .tab-badge { background:#000; border-color:#e6e6e6; color:#e6e6e6; }
+body.dark .tab-item .tab-close { background:#000; color:#e6e6e6; border-color:#e6e6e6; }
+body.dark .tab-status { border-color:#e6e6e6; }
+body.dark .tab-status.loading { background:#c9a44f; }
+body.dark .tab-status.error { background:#c94f5b; }
+body.dark .tab-status.done { background:#3aa87e; }
+
 /* Disabled button state */
 button:disabled,
 .btn:disabled {

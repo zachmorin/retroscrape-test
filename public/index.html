@@ -16,8 +16,7 @@
   <div class="container">
     <button id="theme-toggle" class="btn toggle-btn" title="Toggle dark mode">🌙</button>
     <h1 class="retro-title">RETROSCRAPE</h1>
-    <p class="tagline">Quickly scrape for images from any webpage.<br>
-    Note: Does not scrape images from CSS files.</p>
+    <p class="tagline">Quickly scrape for images from any webpage.</p>
     <form id="scrape-form">
       <input type="url" id="website-url" placeholder="https://example.com" required />
       <button type="submit">Scrape</button>
@@ -29,6 +28,17 @@
         <button id="clear-history" class="btn btn-clear">clear</button>
       </div>
       <ul id="history"></ul>
+    </div>
+
+    <!-- Tabs Bar for multi-search sessions -->
+    <div id="tabs-container">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <h3 style="margin:0;">Tabs</h3>
+        <button id="clear-tabs" class="btn btn-clear">clear</button>
+      </div>
+      <div id="tabs-bar" class="tabs-bar" style="display:none;">
+        <div id="tabs-list" class="tabs-list"></div>
+      </div>
     </div>
 
     <div id="loading" class="loading" style="display: none;">Loading...</div>
