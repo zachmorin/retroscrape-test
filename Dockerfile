@@ -50,6 +50,9 @@ COPY package*.json ./
 # Install Node dependencies
 RUN npm ci --only=production
 
+# Ensure Playwright browsers are installed at a fixed path
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
 # Install Playwright browsers
 RUN npx playwright install chromium
 
@@ -58,7 +61,7 @@ COPY . .
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV PORT=10000
 
 # Expose port
 EXPOSE 10000
